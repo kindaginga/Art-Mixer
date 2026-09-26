@@ -215,11 +215,30 @@ namespace GShuf::MainMenu
 			static RE::IMenu* Create(const RE::UIMessage&) { return new PickerMenu(); }
 		};
 
+		// Neither the press-start page nor a re-created menu has MainMenu's cursor on (its own key-press transition sets it),
+		// and the picker never counts as the top menu, so MainMenu is given the cursor flag and the engine refreshes the cursor.
+		void ShowMainMenuCursor()
+		{
+			auto* ui = RE::UI::GetSingleton();
+			if (!ui || !ui->GetMenuOpen(kPickerMenu.data())) return;
+			auto main = ui->GetMenu("MainMenu");
+			if (!main) return;
+			const bool had = main->menuFlags.all(RE::UI_MENU_FLAGS::kUsesCursor);
+			main->menuFlags.set(RE::UI_MENU_FLAGS::kUsesCursor);
+			ui->RefreshCursor();
+			logger::info("mainmenu: MainMenu cursor flag was {}, cursor refreshed; cursor menu open {}", had, ui->GetMenuOpen(RE::CursorMenu::MENU_NAME));
+		}
+
 		void ShowPicker(bool a_show)
 		{
 			if (auto* queue = RE::UIMessageQueue::GetSingleton(); queue) {
 				queue->AddMessage(RE::BSFixedString(kPickerMenu.data()), a_show ? RE::UI_MESSAGE_TYPE::kShow : RE::UI_MESSAGE_TYPE::kHide);
 			}
+			if (!a_show) return;
+			std::thread([] {
+				std::this_thread::sleep_for(std::chrono::milliseconds(500));
+				F4SE::GetTaskInterface()->AddTask([] { ShowMainMenuCursor(); });
+			}).detach();
 		}
 
 		class MenuSink : public RE::BSTEventSink<RE::MenuOpenCloseEvent>
@@ -321,6 +340,8 @@ namespace GShuf::MainMenu
 
 	std::pair<int, int> CursorPos()
 	{
+		// The engine's own cursor position; the per-frame cursor events the picker receives lag behind it on the press-start page.
+		if (auto* cursor = RE::MenuCursor::GetSingleton(); cursor) return { cursor->cursorPosX, cursor->cursorPosY };
 		return { s_cursorX.load(), s_cursorY.load() };
 	}
 
