@@ -2,6 +2,7 @@
 
 #include "Distributor.h"
 #include "Engine.h"
+#include "MainMenu.h"
 #include "Settings.h"
 
 #include <cmath>
@@ -16,6 +17,8 @@ namespace GShuf::AutoTest
 	{
 		bool s_enabled{ false };
 		std::string s_save;
+		std::string s_mode;
+		std::string s_menuVideo;
 		std::atomic<bool> s_loadIssued{ false };
 		std::atomic<bool> s_finishIssued{ false };
 		std::atomic<bool> s_confirmed{ false };
@@ -131,6 +134,13 @@ namespace GShuf::AutoTest
 			value.erase(value.find_last_not_of(" \t\r\n") + 1);
 			if (key.find("benabled") != std::string::npos) s_enabled = value == "1";
 			if (key.find("sloadsave") != std::string::npos) s_save = value;
+			if (key.find("smode") != std::string::npos) s_mode = Settings::Lower(value);
+			if (key.find("smenuvideo") != std::string::npos) s_menuVideo = value;
+		}
+		if (s_enabled && s_mode == "mainmenu") {
+			logger::info("autotest: main menu mode, video '{}'", s_menuVideo);
+			MainMenu::SetOptions({ { "Vanilla", "" }, { "Test video", s_menuVideo } }, 0);
+			return true;
 		}
 		if (s_enabled && !s_save.empty()) {
 			logger::info("autotest: enabled, will load '{}'", s_save);
@@ -155,6 +165,19 @@ namespace GShuf::AutoTest
 	void OnGameDataReady()
 	{
 		if (!s_enabled || s_loadIssued.exchange(true)) return;
+		if (s_mode == "mainmenu") {
+			std::thread([] {
+				std::this_thread::sleep_for(std::chrono::seconds(20));
+				Console("Screenshot");
+				std::this_thread::sleep_for(std::chrono::seconds(2));
+				RunOnGameThread([] { MainMenu::Select(1); });
+				std::this_thread::sleep_for(std::chrono::seconds(10));
+				Console("Screenshot");
+				std::this_thread::sleep_for(std::chrono::seconds(3));
+				Console("qqq");
+			}).detach();
+			return;
+		}
 		RunOnGameThread(Heartbeat);
 		logger::info("autotest: game data ready; loading '{}' in 12 s", s_save);
 		std::thread([] {

@@ -22,6 +22,8 @@ namespace GShuf::Packs
 	bool Load();
 	[[nodiscard]] const std::vector<Pack>& All();
 	[[nodiscard]] const Pack* Vanilla();
+	// Identifies the installed pack set; changes whenever the converter rebuilds it.
+	[[nodiscard]] std::string Signature();
 	// Packs that have images for the category, in slot order (1-based slots).
 	[[nodiscard]] std::vector<const Pack*> SlotsFor(std::string_view a_category);
 }

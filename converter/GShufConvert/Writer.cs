@@ -111,6 +111,7 @@ public sealed class Writer
         {
             version = 1,
             generated = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
+            signature = ShortHash(string.Join("|", packs.Select(p => p.Id + ":" + p.Images.Count))),
             packs = packs.Select(p => new
             {
                 id = p.Id,
@@ -129,7 +130,7 @@ public sealed class Writer
         string[] categories = ["paintings", "posters", "signage", "magazines", "quest"];
         string[] titles = ["Paintings", "Posters", "Signage", "Magazines", "Quest"];
         var pages = new List<object>();
-        var settings = new StringBuilder("[Main]\nbBlankCanvases=0\niSeed=1\n");
+        var settings = new StringBuilder("[Main]\nbBlankCanvases=0\niSeed=1\nsPackSignature=\n");
         for (var c = 0; c < categories.Length; c++)
         {
             var eligible = packs.Where(p => p.Id != "vanilla" && p.Images.Any(i => i.Category == categories[c])).ToList();
@@ -182,6 +183,7 @@ public sealed class Writer
                 new { type = "section", text = "Options" },
                 new { id = "bBlankCanvases:Main", type = "switcher", text = "Put art on blank canvases", help = "When on, empty canvases and frames also receive pack art. Applies when an area loads.", valueOptions = new { sourceType = "ModSettingBool" } },
                 new { type = "button", text = "Shuffle layout", help = "Picks a new arrangement with the same pack shares. It appears when an area loads (fast travel, doors, or loading a save).", action = new { type = "CallFunction", form = "GalleryShuffle.esl|800", function = "Shuffle" } },
+                new { type = "button", text = "Reset all settings", help = "Sets every pack share to 0 (all vanilla), turns blank canvases off and resets the layout seed.", action = new { type = "CallFunction", form = "GalleryShuffle.esl|800", function = "ResetAll" } },
             },
             pages,
         };

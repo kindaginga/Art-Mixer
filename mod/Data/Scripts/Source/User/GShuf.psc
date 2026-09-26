@@ -22,6 +22,9 @@ int Function NewSeed() global native
 ; Re-applies the current settings to cached models.
 Function Reapply() global native
 
+; Identifies the installed pack set; it changes whenever the converter rebuilds the packs.
+string Function GetPackSignature() global native
+
 ; Number of packs that provide art for a category.
 int Function GetSlotCount(string asCategory) global native
 

@@ -40,6 +40,8 @@ set(SOURCES
 	src/Papyrus.h
 	src/AutoTest.cpp
 	src/AutoTest.h
+	src/MainMenu.cpp
+	src/MainMenu.h
 )
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SOURCES})

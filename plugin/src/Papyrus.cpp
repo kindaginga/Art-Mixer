@@ -52,6 +52,11 @@ namespace GShuf::Papyrus
 			Distributor::QueueReapply();
 		}
 
+		RE::BSFixedString GetPackSignature(std::monostate)
+		{
+			return RE::BSFixedString(Packs::Signature());
+		}
+
 		std::int32_t GetSlotCount(std::monostate, RE::BSFixedString a_category)
 		{
 			return static_cast<std::int32_t>(Packs::SlotsFor(a_category.c_str() ? a_category.c_str() : "").size());
@@ -75,6 +80,7 @@ namespace GShuf::Papyrus
 		a_vm->BindNativeMethod(kScript, "SetSeed"sv, SetSeed, true);
 		a_vm->BindNativeMethod(kScript, "NewSeed"sv, NewSeed, true);
 		a_vm->BindNativeMethod(kScript, "Reapply"sv, Reapply, true);
+		a_vm->BindNativeMethod(kScript, "GetPackSignature"sv, GetPackSignature, true);
 		a_vm->BindNativeMethod(kScript, "GetSlotCount"sv, GetSlotCount, true);
 		a_vm->BindNativeMethod(kScript, "GetSlotName"sv, GetSlotName, true);
 		logger::info("papyrus: GShuf natives registered");

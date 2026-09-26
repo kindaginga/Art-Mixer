@@ -16,6 +16,43 @@ Function Register()
 	RegisterForExternalEvent("OnMCMSettingChange|" + ModName, "OnMCMSettingChange")
 	RegisterForExternalEvent("OnMCMMenuOpen|" + ModName, "OnMCMMenuOpen")
 	Debug.Trace("GShuf: Config registered; plugin ready " + GShuf.IsReady() + ", plugin version " + GShuf.GetVersion())
+	CheckPackSignature()
+	PushAll()
+EndFunction
+
+; Zeroes every share when the installed pack set differs from the one these settings were made for.
+Function CheckPackSignature()
+	If !GShuf.IsReady()
+		Return
+	EndIf
+	string current = GShuf.GetPackSignature()
+	string stored = MCM.GetModSettingString(ModName, "sPackSignature:Main")
+	If stored == current
+		Return
+	EndIf
+	If stored != ""
+		ResetAll()
+		Debug.Notification("Gallery Shuffle: the art packs changed, settings were reset.")
+	EndIf
+	MCM.SetModSettingString(ModName, "sPackSignature:Main", current)
+EndFunction
+
+; Reset button and pack-change reset: every share to 0 (all vanilla), blank canvases off, seed 1.
+Function ResetAll()
+	string[] cats = Categories()
+	int c = 0
+	While c < cats.Length
+		int slot = 1
+		While slot <= SlotCount
+			MCM.SetModSettingInt(ModName, "iSlot" + slot + ":" + cats[c], 0)
+			slot += 1
+		EndWhile
+		MCM.SetModSettingInt(ModName, "iVanilla:" + cats[c], 100)
+		c += 1
+	EndWhile
+	MCM.SetModSettingBool(ModName, "bBlankCanvases:Main", false)
+	MCM.SetModSettingInt(ModName, "iSeed:Main", 1)
+	MCM.RefreshMenu()
 	PushAll()
 EndFunction
 

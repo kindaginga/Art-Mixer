@@ -4,6 +4,7 @@
 #include "Catalog.h"
 #include "Distributor.h"
 #include "Engine.h"
+#include "MainMenu.h"
 #include "Packs.h"
 #include "Papyrus.h"
 #include "Settings.h"
@@ -51,6 +52,7 @@ namespace
 		if (!a_message) return;
 		switch (a_message->type) {
 		case F4SE::MessagingInterface::kGameDataReady:
+			GShuf::MainMenu::OnGameDataReady();
 			GShuf::AutoTest::OnGameDataReady();
 			break;
 		case F4SE::MessagingInterface::kPostLoadGame:
@@ -83,6 +85,7 @@ bool Plugin::Initialize(const F4SE::LoadInterface* a_f4se)
 		GShuf::Engine::InstallHooks(&GShuf::Distributor::OnModelLoaded);
 		GShuf::Engine::InstallReferenceHook(&GShuf::Distributor::OnReference3D);
 	}
+	GShuf::MainMenu::Install();
 	GShuf::AutoTest::Configure();
 
 	F4SE::GetMessagingInterface()->RegisterListener(OnMessage);

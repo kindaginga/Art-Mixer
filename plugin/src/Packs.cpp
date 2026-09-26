@@ -9,6 +9,7 @@ namespace GShuf::Packs
 	{
 		std::vector<Pack> s_packs;
 		const Pack* s_vanilla{ nullptr };
+		std::string s_signature;
 
 		// Reads a string field, treating a missing key or a JSON null as empty.
 		[[nodiscard]] std::string Str(const nlohmann::json& a_row, const char* a_key)
@@ -28,6 +29,7 @@ namespace GShuf::Packs
 	{
 		s_packs.clear();
 		s_vanilla = nullptr;
+		s_signature.clear();
 		const auto path = std::filesystem::path("Data") / "GShuf" / "packs.json";
 		std::ifstream file(path);
 		if (!file) {
@@ -36,6 +38,7 @@ namespace GShuf::Packs
 		}
 		try {
 			const auto json = nlohmann::json::parse(file);
+			s_signature = Str(json, "signature");
 			for (const auto& row : json.value("packs", nlohmann::json::array())) {
 				Pack pack;
 				pack.id = Settings::Lower(Str(row, "id"));
@@ -77,6 +80,14 @@ namespace GShuf::Packs
 	const Pack* Vanilla()
 	{
 		return s_vanilla;
+	}
+
+	std::string Signature()
+	{
+		if (!s_signature.empty()) return s_signature;
+		std::string ids;
+		for (const auto& pack : s_packs) ids += pack.id + ";";
+		return ids.empty() ? "none" : ids;
 	}
 
 	std::vector<const Pack*> SlotsFor(std::string_view a_category)
