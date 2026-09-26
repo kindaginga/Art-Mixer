@@ -72,8 +72,15 @@ namespace GShuf::MainMenu
 		public:
 			PickerMenu()
 			{
-				menuFlags.set(RE::UI_MENU_FLAGS::kUsesCursor, RE::UI_MENU_FLAGS::kDontHideCursorWhenTopmost, RE::UI_MENU_FLAGS::kUpdateUsesCursor);
-				depthPriority = RE::UI_DEPTH_PRIORITY::kGameMessage;
+				menuFlags.set(RE::UI_MENU_FLAGS::kUsesCursor, RE::UI_MENU_FLAGS::kDontHideCursorWhenTopmost, RE::UI_MENU_FLAGS::kUpdateUsesCursor, RE::UI_MENU_FLAGS::kTopmostRenderedMenu);
+				depthPriority = RE::UI_DEPTH_PRIORITY::kMessage;
+				// Copies the render setup of the real main menu so the picker draws in the same layer.
+				if (auto* ui = RE::UI::GetSingleton(); ui) {
+					if (auto main = ui->GetMenu("MainMenu"); main) {
+						customRendererName = main->customRendererName;
+						logger::info("mainmenu: MainMenu flags {:#x} depth {} renderer '{}'", main->menuFlags.underlying(), static_cast<int>(main->depthPriority.underlying()), main->customRendererName.c_str() ? main->customRendererName.c_str() : "");
+					}
+				}
 				auto* manager = RE::BSScaleformManager::GetSingleton();
 				const bool loaded = manager && manager->LoadMovieEx(*this, "Interface/GShufPicker.swf", "root1");
 				logger::info("mainmenu: picker movie loaded {}, menuObj object {}", loaded, menuObj.IsObject());
@@ -112,6 +119,13 @@ namespace GShuf::MainMenu
 			static RE::IMenu* Create(const RE::UIMessage&) { return new PickerMenu(); }
 		};
 
+		void ShowPicker(bool a_show)
+		{
+			if (auto* queue = RE::UIMessageQueue::GetSingleton(); queue) {
+				queue->AddMessage(RE::BSFixedString(kPickerMenu.data()), a_show ? RE::UI_MESSAGE_TYPE::kShow : RE::UI_MESSAGE_TYPE::kHide);
+			}
+		}
+
 		class MenuSink : public RE::BSTEventSink<RE::MenuOpenCloseEvent>
 		{
 		public:
@@ -120,9 +134,7 @@ namespace GShuf::MainMenu
 				const auto name = a_event.menuName.c_str() ? a_event.menuName.c_str() : "";
 				if (std::string_view(name) == "MainMenu") {
 					logger::info("mainmenu: MainMenu {}", a_event.opening ? "opened" : "closed");
-					if (auto* queue = RE::UIMessageQueue::GetSingleton(); queue) {
-						queue->AddMessage(RE::BSFixedString(kPickerMenu.data()), a_event.opening ? RE::UI_MESSAGE_TYPE::kShow : RE::UI_MESSAGE_TYPE::kHide);
-					}
+					ShowPicker(a_event.opening);
 				}
 				return RE::BSEventNotifyControl::kContinue;
 			}
@@ -151,7 +163,9 @@ namespace GShuf::MainMenu
 		}
 		ui->RegisterSink<RE::MenuOpenCloseEvent>(&s_sink);
 		ui->RegisterMenu(kPickerMenu.data(), &PickerMenu::Create);
-		logger::info("mainmenu: picker menu registered");
+		const bool mainOpen = ui->GetMenuOpen("MainMenu");
+		logger::info("mainmenu: picker menu registered; MainMenu already open {}", mainOpen);
+		if (mainOpen) ShowPicker(true);
 	}
 
 	void SetOptions(std::vector<Option> a_options, int a_selected)
@@ -171,11 +185,16 @@ namespace GShuf::MainMenu
 			s_menuVideo = s_options[a_index].video;
 			logger::info("mainmenu: selected {} -> '{}'", s_options[a_index].name, s_menuVideo);
 		}
-		// The main menu opens its video once per show, so it is re-shown to pick up the new file.
+		// The main menu opens its video when the menu is created, so it is closed and re-created to pick up the new file.
 		if (auto* queue = RE::UIMessageQueue::GetSingleton(); queue) {
 			queue->AddMessage(RE::BSFixedString("MainMenu"), RE::UI_MESSAGE_TYPE::kHide);
-			queue->AddMessage(RE::BSFixedString("MainMenu"), RE::UI_MESSAGE_TYPE::kShow);
 		}
+		std::thread([] {
+			std::this_thread::sleep_for(std::chrono::seconds(1));
+			F4SE::GetTaskInterface()->AddTask([] {
+				if (auto* queue = RE::UIMessageQueue::GetSingleton(); queue) queue->AddMessage(RE::BSFixedString("MainMenu"), RE::UI_MESSAGE_TYPE::kShow);
+			});
+		}).detach();
 	}
 
 	void SetMenuVideo(const std::string& a_path)
