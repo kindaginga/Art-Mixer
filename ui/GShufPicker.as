@@ -63,7 +63,7 @@ package {
 
         private function redraw():void {
             var current:String = names.length > 0 && selected >= 0 && selected < names.length ? String(names[selected]) : "Vanilla";
-            buttonLabel.text = current + (names.length > 1 ? "   ▲" : "");
+            buttonLabel.text = current + (names.length > 1 ? "   ^" : "");
             drawBox(button, WIDTH, ROW, 0x1A1A1A, 0.85, 0x9DFF9D);
 
             while (list.numChildren > 0) list.removeChildAt(0);

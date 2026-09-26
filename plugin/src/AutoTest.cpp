@@ -139,7 +139,7 @@ namespace GShuf::AutoTest
 		}
 		if (s_enabled && s_mode == "mainmenu") {
 			logger::info("autotest: main menu mode, video '{}'", s_menuVideo);
-			MainMenu::SetOptions({ { "Vanilla", "" }, { "Test video", s_menuVideo } }, 0);
+			if (!s_menuVideo.empty()) MainMenu::SetOptions({ { "Vanilla", "" }, { "Test video", s_menuVideo } }, 0);
 			return true;
 		}
 		if (s_enabled && !s_save.empty()) {

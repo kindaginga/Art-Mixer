@@ -126,6 +126,12 @@ public static class Scanner
         return images.Values.ToList();
     }
 
+    /// <summary>The main menu video a mod ships (Video\MainMenuLoop.bk2), as a source path, or null.</summary>
+    public static string? FindMenuVideo(Source source)
+    {
+        return source.Files.Keys.FirstOrDefault(k => k.Equals("video\\mainmenuloop.bk2", StringComparison.OrdinalIgnoreCase));
+    }
+
     /// <summary>Reads an explicit pack manifest: {"images":[{"texture":"Textures\\...","category":"paintings","slot":"optional vanilla material"}]}.</summary>
     private static List<FoundImage> FromManifest(Source source, SourceFile manifest, Catalog catalog, Report report)
     {

@@ -86,6 +86,7 @@ bool Plugin::Initialize(const F4SE::LoadInterface* a_f4se)
 		GShuf::Engine::InstallReferenceHook(&GShuf::Distributor::OnReference3D);
 	}
 	GShuf::MainMenu::Install();
+	GShuf::MainMenu::LoadFromPacks();
 	GShuf::AutoTest::Configure();
 
 	F4SE::GetMessagingInterface()->RegisterListener(OnMessage);

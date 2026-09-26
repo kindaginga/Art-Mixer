@@ -23,7 +23,7 @@ public sealed class Source
 
 public static class Sources
 {
-    private static readonly string[] DataRoots = ["materials", "textures", "meshes", "gshuf", "mcm", "scripts", "sound", "strings"];
+    private static readonly string[] DataRoots = ["materials", "textures", "meshes", "gshuf", "mcm", "scripts", "sound", "strings", "video", "interface"];
 
     /// <summary>Loads a mod folder or archive and splits it into packs (one per FOMOD option group when present).</summary>
     public static List<Source> Load(string input, string tempRoot, Report report)

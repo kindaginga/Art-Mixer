@@ -52,17 +52,21 @@ Function ResetAll()
 	EndWhile
 	MCM.SetModSettingBool(ModName, "bBlankCanvases:Main", false)
 	MCM.SetModSettingInt(ModName, "iSeed:Main", 1)
+	MCM.SetModSettingInt(ModName, "iMenuVideo:Main", 0)
+	GShuf.SetMenuVideo(0)
 	MCM.RefreshMenu()
 	PushAll()
 EndFunction
 
 string[] Function Categories()
-	string[] list = new string[5]
+	string[] list = new string[7]
 	list[0] = "Paintings"
 	list[1] = "Posters"
 	list[2] = "Signage"
 	list[3] = "Magazines"
 	list[4] = "Quest"
+	list[5] = "PipBoyScreen"
+	list[6] = "PipBoySkin"
 	Return list
 EndFunction
 
@@ -101,6 +105,9 @@ Function PushAll()
 EndFunction
 
 Function OnMCMMenuOpen(string asModName)
+	If GShuf.IsReady()
+		MCM.SetModSettingInt(ModName, "iMenuVideo:Main", GShuf.GetMenuVideo())
+	EndIf
 	string[] cats = Categories()
 	int c = 0
 	While c < cats.Length
@@ -116,6 +123,9 @@ Function OnMCMSettingChange(string asModName, string asId)
 		Return
 	ElseIf asId == "iSeed:Main"
 		GShuf.SetSeed(MCM.GetModSettingInt(ModName, asId))
+		Return
+	ElseIf asId == "iMenuVideo:Main"
+		GShuf.SetMenuVideo(MCM.GetModSettingInt(ModName, asId))
 		Return
 	EndIf
 	string[] cats = Categories()

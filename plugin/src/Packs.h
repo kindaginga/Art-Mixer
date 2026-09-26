@@ -15,6 +15,7 @@ namespace GShuf::Packs
 		std::string id;
 		std::string name;
 		bool vanilla{ false };
+		std::string video;  // main menu video relative to Video, empty when the pack has none
 		std::map<std::string, std::vector<Image>> images;  // by category
 	};
 

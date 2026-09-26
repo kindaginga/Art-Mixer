@@ -9,6 +9,8 @@ public sealed class PackOutput
     public required string Id { get; init; }
     public required string Name { get; init; }
     public List<ImageOutput> Images { get; } = [];
+    /// <summary>Main menu video relative to Video, when the mod ships one.</summary>
+    public string? Video { get; set; }
 }
 
 public sealed class ImageOutput
@@ -36,7 +38,7 @@ public sealed class Writer
         _report = report;
     }
 
-    public PackOutput WritePack(Source source, List<FoundImage> images, HashSet<string> usedIds)
+    public PackOutput WritePack(Source source, List<FoundImage> images, HashSet<string> usedIds, string? menuVideo = null)
     {
         var id = Sources.Sanitize(source.Name);
         if (id.Length > 40) id = id[..32] + "-" + ShortHash(id);
@@ -72,7 +74,12 @@ public sealed class Writer
             WriteMaterial(Path.Combine("Materials", materialRel), material);
             pack.Images.Add(new ImageOutput { Category = image.Category, Material = materialRel, Slot = image.Slot, Width = image.Width, Height = image.Height });
         }
-        _report.Info($"pack '{pack.Name}' ({pack.Id}): {pack.Images.Count} images in {pack.Images.Select(i => i.Category).Distinct().Count()} categories");
+        if (menuVideo != null && source.Files.TryGetValue(menuVideo, out var video))
+        {
+            pack.Video = $"GShuf\\Packs\\{id}\\MainMenuLoop.bk2";
+            WriteFile(Path.Combine("Video", pack.Video), video.Read());
+        }
+        _report.Info($"pack '{pack.Name}' ({pack.Id}): {pack.Images.Count} images in {pack.Images.Select(i => i.Category).Distinct().Count()} categories{(pack.Video != null ? ", main menu video" : "")}");
         return pack;
     }
 
@@ -116,6 +123,7 @@ public sealed class Writer
             {
                 id = p.Id,
                 name = p.Name,
+                video = p.Video,
                 images = p.Images.Select(i => i.Slot != null
                     ? (object)new { category = i.Category, material = i.Material, slot = i.Slot, width = i.Width, height = i.Height }
                     : new { category = i.Category, material = i.Material, width = i.Width, height = i.Height }),
@@ -127,10 +135,13 @@ public sealed class Writer
     /// <summary>Generates the MCM pages: one per category with a slider per pack and the derived Vanilla slider.</summary>
     public void WriteMcm(List<PackOutput> packs, int slotsPerCategory)
     {
-        string[] categories = ["paintings", "posters", "signage", "magazines", "quest"];
-        string[] titles = ["Paintings", "Posters", "Signage", "Magazines", "Quest"];
+        string[] categories = ["paintings", "posters", "signage", "magazines", "quest", "pipboyscreen", "pipboyskin"];
+        string[] titles = ["Paintings", "Posters", "Signage", "Magazines", "Quest", "PipBoyScreen", "PipBoySkin"];
+        string[] pageTitles = ["Paintings", "Posters", "Signage", "Magazines", "Quest", "Pip-Boy screen", "Pip-Boy skin"];
         var pages = new List<object>();
-        var settings = new StringBuilder("[Main]\nbBlankCanvases=0\niSeed=1\nsPackSignature=\n");
+        var settings = new StringBuilder("[Main]\nbBlankCanvases=0\niSeed=1\niMenuVideo=0\nsPackSignature=\n");
+        var videoOptions = new List<string> { "Vanilla" };
+        videoOptions.AddRange(packs.Where(p => p.Video != null).Select(p => p.Name));
         for (var c = 0; c < categories.Length; c++)
         {
             var eligible = packs.Where(p => p.Id != "vanilla" && p.Images.Any(i => i.Category == categories[c])).ToList();
@@ -145,7 +156,7 @@ public sealed class Writer
             if (slots.Count == 0) continue;
             var content = new List<object>
             {
-                new { type = "text", text = $"Share of {titles[c].ToLowerInvariant()} each pack receives. The shares add up to 100; whatever is left stays vanilla.", html = false },
+                new { type = "text", text = $"Share of {pageTitles[c].ToLowerInvariant()} each pack receives. The shares add up to 100; whatever is left stays vanilla.", html = false },
             };
             for (var s = 0; s < slots.Count; s++)
             {
@@ -167,7 +178,7 @@ public sealed class Writer
                 help = "What the pack shares leave over. It follows the other sliders and cannot be set directly.",
                 valueOptions = new { min = 0, max = 100, step = 1, sourceType = "ModSettingInt" },
             });
-            pages.Add(new { pageDisplayName = titles[c], content });
+            pages.Add(new { pageDisplayName = pageTitles[c], content });
         }
         var config = new
         {
@@ -182,6 +193,7 @@ public sealed class Writer
                 new { type = "spacer", numLines = 1 },
                 new { type = "section", text = "Options" },
                 new { id = "bBlankCanvases:Main", type = "switcher", text = "Put art on blank canvases", help = "When on, empty canvases and frames also receive pack art. Applies when an area loads.", valueOptions = new { sourceType = "ModSettingBool" } },
+                new { id = "iMenuVideo:Main", type = "stepper", text = "Main menu art", help = "Which pack's main menu video plays. Also available from the list in the corner of the main menu.", valueOptions = new { options = videoOptions.ToArray(), sourceType = "ModSettingInt" } },
                 new { type = "button", text = "Shuffle layout", help = "Picks a new arrangement with the same pack shares. It appears when an area loads (fast travel, doors, or loading a save).", action = new { type = "CallFunction", form = "GalleryShuffle.esl|800", function = "Shuffle" } },
                 new { type = "button", text = "Reset all settings", help = "Sets every pack share to 0 (all vanilla), turns blank canvases off and resets the layout seed.", action = new { type = "CallFunction", form = "GalleryShuffle.esl|800", function = "ResetAll" } },
             },

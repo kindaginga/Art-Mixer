@@ -14,6 +14,10 @@ namespace GShuf::MainMenu
 	void OnGameDataReady();
 	// Replaces the list the picker offers and the current choice.
 	void SetOptions(std::vector<Option> a_options, int a_selected);
+	// Builds the option list from the installed packs and restores the saved choice.
+	void LoadFromPacks();
+	[[nodiscard]] int Selected();
+	[[nodiscard]] int OptionCount();
 	// Applies a choice by index and re-shows the main menu so the new video starts.
 	void Select(int a_index);
 	// Sets the video file directly; empty restores vanilla.

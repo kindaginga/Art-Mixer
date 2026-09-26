@@ -1,5 +1,6 @@
 #include "MainMenu.h"
 
+#include "Packs.h"
 #include "Settings.h"
 
 #define WIN32_LEAN_AND_MEAN
@@ -18,6 +19,42 @@ namespace GShuf::MainMenu
 		int s_selected{ 0 };
 		std::atomic<int> s_opens{ 0 };
 		constexpr auto kPickerMenu = "GShufPicker"sv;
+		std::vector<std::string> s_optionIds;
+
+		// The chosen pack id lives in the plugin's own state file, since the main menu runs no Papyrus.
+		[[nodiscard]] std::filesystem::path StatePath()
+		{
+			return std::filesystem::path("Data") / "GShuf" / "state.json";
+		}
+
+		void SaveState()
+		{
+			try {
+				nlohmann::json json;
+				std::ifstream in(StatePath());
+				if (in) { try { json = nlohmann::json::parse(in); } catch (...) { json = nlohmann::json::object(); } }
+				if (!json.is_object()) json = nlohmann::json::object();
+				json["menuVideo"] = (s_selected >= 0 && s_selected < static_cast<int>(s_optionIds.size())) ? s_optionIds[s_selected] : "";
+				std::filesystem::create_directories(StatePath().parent_path());
+				std::ofstream out(StatePath());
+				out << json.dump(1);
+			} catch (const std::exception& e) {
+				logger::warn("mainmenu: cannot save state: {}", e.what());
+			}
+		}
+
+		[[nodiscard]] std::string LoadStateMenuVideo()
+		{
+			try {
+				std::ifstream in(StatePath());
+				if (!in) return {};
+				const auto json = nlohmann::json::parse(in);
+				const auto it = json.find("menuVideo");
+				return it != json.end() && it->is_string() ? it->get<std::string>() : std::string();
+			} catch (...) {
+				return {};
+			}
+		}
 
 		void* HookedBinkOpen(const char* a_name, std::uint32_t a_flags)
 		{
@@ -172,8 +209,41 @@ namespace GShuf::MainMenu
 	{
 		std::scoped_lock lock(s_mutex);
 		s_options = std::move(a_options);
+		s_optionIds.assign(s_options.size(), "");
 		s_selected = a_selected;
 		s_menuVideo = (a_selected >= 0 && a_selected < static_cast<int>(s_options.size())) ? s_options[a_selected].video : std::string();
+	}
+
+	void LoadFromPacks()
+	{
+		std::vector<Option> options{ { "Vanilla", "" } };
+		std::vector<std::string> ids{ "" };
+		for (const auto& pack : Packs::All()) {
+			if (pack.video.empty()) continue;
+			options.push_back({ pack.name, "Data\\Video\\" + pack.video });
+			ids.push_back(pack.id);
+		}
+		const auto saved = LoadStateMenuVideo();
+		int selected = 0;
+		for (std::size_t i = 1; i < ids.size(); ++i) {
+			if (ids[i] == saved) selected = static_cast<int>(i);
+		}
+		SetOptions(std::move(options), selected);
+		std::scoped_lock lock(s_mutex);
+		s_optionIds = std::move(ids);
+		logger::info("mainmenu: {} video options, selected {} ('{}')", s_options.size(), s_selected, saved);
+	}
+
+	int Selected()
+	{
+		std::scoped_lock lock(s_mutex);
+		return s_selected;
+	}
+
+	int OptionCount()
+	{
+		std::scoped_lock lock(s_mutex);
+		return static_cast<int>(s_options.size());
 	}
 
 	void Select(int a_index)
@@ -184,6 +254,7 @@ namespace GShuf::MainMenu
 			s_selected = a_index;
 			s_menuVideo = s_options[a_index].video;
 			logger::info("mainmenu: selected {} -> '{}'", s_options[a_index].name, s_menuVideo);
+			SaveState();
 		}
 		// The main menu opens its video when the menu is created, so it is closed and re-created to pick up the new file.
 		if (auto* queue = RE::UIMessageQueue::GetSingleton(); queue) {

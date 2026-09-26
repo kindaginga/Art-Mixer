@@ -2,6 +2,7 @@
 
 #include "Distributor.h"
 #include "Engine.h"
+#include "MainMenu.h"
 #include "Packs.h"
 #include "Settings.h"
 
@@ -52,6 +53,16 @@ namespace GShuf::Papyrus
 			Distributor::QueueReapply();
 		}
 
+		void SetMenuVideo(std::monostate, std::int32_t a_index)
+		{
+			if (a_index != MainMenu::Selected()) MainMenu::Select(a_index);
+		}
+
+		std::int32_t GetMenuVideo(std::monostate)
+		{
+			return MainMenu::Selected();
+		}
+
 		RE::BSFixedString GetPackSignature(std::monostate)
 		{
 			return RE::BSFixedString(Packs::Signature());
@@ -80,6 +91,8 @@ namespace GShuf::Papyrus
 		a_vm->BindNativeMethod(kScript, "SetSeed"sv, SetSeed, true);
 		a_vm->BindNativeMethod(kScript, "NewSeed"sv, NewSeed, true);
 		a_vm->BindNativeMethod(kScript, "Reapply"sv, Reapply, true);
+		a_vm->BindNativeMethod(kScript, "SetMenuVideo"sv, SetMenuVideo, true);
+		a_vm->BindNativeMethod(kScript, "GetMenuVideo"sv, GetMenuVideo, true);
 		a_vm->BindNativeMethod(kScript, "GetPackSignature"sv, GetPackSignature, true);
 		a_vm->BindNativeMethod(kScript, "GetSlotCount"sv, GetSlotCount, true);
 		a_vm->BindNativeMethod(kScript, "GetSlotName"sv, GetSlotName, true);

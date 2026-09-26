@@ -59,7 +59,7 @@ public static class Conversion
             {
                 // A picture that an earlier option group of the same mod already provides (same bytes) is not repeated in later groups.
                 var images = Scanner.Scan(source, catalog, report).Where(i => emitted.Add(Convert.ToHexString(SHA1.HashData(source.Files[i.Diffuse].Read())) + "|" + (i.Slot ?? ""))).ToList();
-                if (images.Count == 0)
+                if (images.Count == 0 && Scanner.FindMenuVideo(source) == null)
                 {
                     report.Info($"{source.Name}: no art found (no vanilla-path textures, no materials with textures, no gshuf-pack.json); skipped");
                     continue;
@@ -68,7 +68,7 @@ public static class Conversion
             }
             // One pack per mod: FOMOD options pool together (duplicates were already dropped by content), so alternative
             // sets of the same frames become variants the plugin picks among. Split mode keeps one pack per option.
-            var small = options.SplitOptions ? scanned.Where(x => x.Images.Count < 4).ToList() : scanned.ToList();
+            var small = options.SplitOptions ? scanned.Where(x => x.Images.Count < 4 && Scanner.FindMenuVideo(x.Source) == null).ToList() : scanned.ToList();
             if (scanned.Count > 1 && small.Count > 1)
             {
                 var modName = Sources.DisplayName(Path.GetFileNameWithoutExtension(input.TrimEnd('\\', '/')));
@@ -76,6 +76,8 @@ public static class Conversion
                 var mergedImages = new List<FoundImage>();
                 foreach (var (source, images) in small)
                 {
+                    var video = Scanner.FindMenuVideo(source);
+                    if (video != null && !merged.Files.ContainsKey(video)) merged.Files[video] = source.Files[video];
                     var prefix = Sources.Sanitize(source.Name) + "|";
                     foreach (var image in images)
                     {
@@ -98,8 +100,8 @@ public static class Conversion
             if (scanned.Count == 0) report.Warn($"{Path.GetFileName(input)}: nothing usable found; is this an art mod?");
             foreach (var (source, images) in scanned)
             {
-                var pack = writer.WritePack(source, images, usedIds);
-                if (pack.Images.Count > 0) packs.Add(pack);
+                var pack = writer.WritePack(source, images, usedIds, Scanner.FindMenuVideo(source));
+                if (pack.Images.Count > 0 || pack.Video != null) packs.Add(pack);
             }
         }
         if (options.IncludeVanilla) packs.Add(writer.WriteVanillaPack());

@@ -6006,5 +6006,69 @@
   "normal": "Shared\\FlatFlat_n.dds",
   "width": 1024,
   "height": 1024
+ },
+ {
+  "material": "animobjects\\pipboy\\pipboyscreen.bgsm",
+  "category": "pipboyscreen",
+  "diffuse": "AnimObjects\\PipBoy\\PipBoyScreen_d.dds",
+  "normal": "Shared\\FlatFlat_n.dds",
+  "width": 1024,
+  "height": 1024
+ },
+ {
+  "material": "animobjects\\pipboy\\pipboy01.bgsm",
+  "category": "pipboyskin",
+  "diffuse": "AnimObjects\\PipBoy\\PipBoy01_d.dds",
+  "normal": "AnimObjects\\PipBoy\\PipBoy01_n.dds",
+  "width": 2048,
+  "height": 2048
+ },
+ {
+  "material": "animobjects\\pipboy\\pipboy02.bgsm",
+  "category": "pipboyskin",
+  "diffuse": "AnimObjects\\PipBoy\\PipBoy02_d.dds",
+  "normal": "AnimObjects\\PipBoy\\PipBoy02_n.dds",
+  "width": 2048,
+  "height": 2048
+ },
+ {
+  "material": "animobjects\\pipboy\\pipboyplastic01.bgsm",
+  "category": "pipboyskin",
+  "diffuse": "AnimObjects\\PipBoy\\PipBoy01_d.dds",
+  "normal": "AnimObjects\\PipBoy\\PipBoy01_n.dds",
+  "width": 2048,
+  "height": 2048
+ },
+ {
+  "material": "animobjects\\pipboy\\pipboyplastic02.bgsm",
+  "category": "pipboyskin",
+  "diffuse": "AnimObjects\\PipBoy\\PipBoy02_d.dds",
+  "normal": "AnimObjects\\PipBoy\\PipBoy02_n.dds",
+  "width": 2048,
+  "height": 2048
+ },
+ {
+  "material": "animobjects\\pipboy\\pipboylabels01.bgsm",
+  "category": "pipboyskin",
+  "diffuse": "AnimObjects\\PipBoy\\PipBoyLabels01_d.dds",
+  "normal": "AnimObjects\\PipBoy\\PipBoyLabels01_n.dds",
+  "width": 512,
+  "height": 512
+ },
+ {
+  "material": "animobjects\\pipboy\\pipboyinterior01.bgsm",
+  "category": "pipboyskin",
+  "diffuse": "AnimObjects\\PipBoy\\PipBoyInterior01_d.dds",
+  "normal": "AnimObjects\\PipBoy\\PipBoyInterior01_n.dds",
+  "width": 512,
+  "height": 512
+ },
+ {
+  "material": "animobjects\\pipboy\\pipboyglow01.bgsm",
+  "category": "pipboyskin",
+  "diffuse": "AnimObjects\\PipBoy\\PipBoyGlow01_d.dds",
+  "normal": "AnimObjects\\PipBoy\\PipBoyGlow01_n.dds",
+  "width": 1024,
+  "height": 1024
  }
 ]

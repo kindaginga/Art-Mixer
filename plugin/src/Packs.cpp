@@ -45,6 +45,8 @@ namespace GShuf::Packs
 				pack.name = Str(row, "name");
 				if (pack.name.empty()) pack.name = pack.id;
 				pack.vanilla = pack.id == "vanilla";
+				pack.video = Str(row, "video");
+				std::replace(pack.video.begin(), pack.video.end(), '/', '\\');
 				std::size_t count = 0;
 				for (const auto& img : row.value("images", nlohmann::json::array())) {
 					Image image;
