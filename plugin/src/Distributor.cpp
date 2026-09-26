@@ -31,6 +31,14 @@ namespace GShuf::Distributor
 		}
 		std::atomic<std::size_t> s_modelsSeen{ 0 };
 		std::atomic<std::size_t> s_swapped{ 0 };
+		std::atomic<std::size_t> s_referencesSeen{ 0 };
+		std::atomic<std::size_t> s_referenceSwaps{ 0 };
+		std::atomic<int> s_referenceLogs{ 0 };
+
+		[[nodiscard]] bool IsPrecombined(std::string_view a_model)
+		{
+			return Settings::Lower(a_model).starts_with("meshes\\precombined\\");
+		}
 
 		[[nodiscard]] std::uint64_t Hash(std::string_view a_text)
 		{
@@ -71,12 +79,11 @@ namespace GShuf::Distributor
 			return matching[static_cast<std::size_t>(a_hash % matching.size())];
 		}
 
-		// Returns the material file to apply for this entry, or empty to leave the vanilla material in place.
-		[[nodiscard]] std::string Choose(const Entry& a_entry, const Settings::Values& a_values)
+		// Returns the material file to apply for a slot under the given identity, or empty to leave the vanilla material in place.
+		[[nodiscard]] std::string ChooseFor(const Catalog::Slot& slot, const std::string& a_identity, const Settings::Values& a_values)
 		{
-			const auto& slot = *a_entry.slot;
 			if (slot.blank && !a_values.blankCanvases) return {};
-			const auto key = fmt::format("{:.0f}|{:.0f}|{:.0f}|{}|{}", a_entry.anchor.x, a_entry.anchor.y, a_entry.anchor.z, slot.material, a_values.seed);
+			const auto key = fmt::format("{}|{}|{}", a_identity, slot.material, a_values.seed);
 			const auto hash = Hash(key);
 			const auto roll = static_cast<int>(hash % 100);
 			const auto slots = Packs::SlotsFor(slot.category);
@@ -100,6 +107,11 @@ namespace GShuf::Distributor
 			return "Materials\\" + image->material;
 		}
 
+		[[nodiscard]] std::string Choose(const Entry& a_entry, const Settings::Values& a_values)
+		{
+			return ChooseFor(*a_entry.slot, fmt::format("{:.0f}|{:.0f}|{:.0f}", a_entry.anchor.x, a_entry.anchor.y, a_entry.anchor.z), a_values);
+		}
+
 		// Applies the chosen material when it differs from what the geometry currently shows.
 		void Apply(Entry& a_entry, const Settings::Values& a_values)
 		{
@@ -117,6 +129,8 @@ namespace GShuf::Distributor
 	{
 		if (!Engine::Available() || Catalog::Count() == 0) return;
 		++s_modelsSeen;
+		// Only precombined meshes are handled on the template; everything else gets a pick per reference in OnReference3D.
+		if (!IsPrecombined(a_modelPath ? a_modelPath : "")) return;
 		const auto values = Settings::Get();
 		std::vector<Entry> found;
 		Engine::ForEachGeometry(a_root, [&](RE::NiAVObject* a_geometry, int a_index) {
@@ -143,6 +157,35 @@ namespace GShuf::Distributor
 		}
 	}
 
+	void OnReference3D(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root)
+	{
+		if (!Engine::Available() || Catalog::Count() == 0) return;
+		const auto values = Settings::Get();
+		const auto identity = fmt::format("ref:{:08X}", a_ref->GetFormID());
+		bool seen = false;
+		Engine::ForEachGeometry(a_root, [&](RE::NiAVObject* a_geometry, int) {
+			const auto name = Engine::ShaderPropertyName(a_geometry);
+			if (name.empty()) return;
+			const auto lowered = Settings::Lower(name);
+			const auto* slot = Catalog::Find(name);
+			const bool ours = lowered.find("materials\\gshuf\\") != std::string::npos;
+			if (!slot && !ours) return;
+			seen = true;
+			if (ours) {
+				// The clone arrived already carrying a pack material: its shader property is shared with another clone.
+				if (s_referenceLogs.load() < 20) { ++s_referenceLogs; logger::info("reference {:08X}: geometry already carries {} (shared property)", a_ref->GetFormID(), name); }
+				return;
+			}
+			const auto wanted = ChooseFor(*slot, identity, values);
+			if (wanted.empty()) return;
+			if (Engine::ApplyMaterial(a_geometry, wanted)) {
+				++s_referenceSwaps;
+				if (s_referenceLogs.load() < 20) { ++s_referenceLogs; logger::info("reference {:08X}: {} -> {}", a_ref->GetFormID(), name, wanted); }
+			}
+		});
+		if (seen) ++s_referencesSeen;
+	}
+
 	void Reapply()
 	{
 		const auto values = Settings::Get();
@@ -165,6 +208,6 @@ namespace GShuf::Distributor
 	Stats GetStats()
 	{
 		std::scoped_lock lock(s_mutex);
-		return Stats{ s_entries.size(), s_swapped.load(), s_modelsSeen.load() };
+		return Stats{ s_entries.size(), s_swapped.load(), s_modelsSeen.load(), s_referencesSeen.load(), s_referenceSwaps.load() };
 	}
 }

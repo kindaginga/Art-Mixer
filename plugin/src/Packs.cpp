@@ -9,6 +9,19 @@ namespace GShuf::Packs
 	{
 		std::vector<Pack> s_packs;
 		const Pack* s_vanilla{ nullptr };
+
+		// Reads a string field, treating a missing key or a JSON null as empty.
+		[[nodiscard]] std::string Str(const nlohmann::json& a_row, const char* a_key)
+		{
+			const auto it = a_row.find(a_key);
+			return it != a_row.end() && it->is_string() ? it->get<std::string>() : std::string();
+		}
+
+		[[nodiscard]] int Int(const nlohmann::json& a_row, const char* a_key)
+		{
+			const auto it = a_row.find(a_key);
+			return it != a_row.end() && it->is_number() ? it->get<int>() : 0;
+		}
 	}
 
 	bool Load()
@@ -25,17 +38,18 @@ namespace GShuf::Packs
 			const auto json = nlohmann::json::parse(file);
 			for (const auto& row : json.value("packs", nlohmann::json::array())) {
 				Pack pack;
-				pack.id = Settings::Lower(row.value("id", ""));
-				pack.name = row.value("name", pack.id);
+				pack.id = Settings::Lower(Str(row, "id"));
+				pack.name = Str(row, "name");
+				if (pack.name.empty()) pack.name = pack.id;
 				pack.vanilla = pack.id == "vanilla";
 				std::size_t count = 0;
 				for (const auto& img : row.value("images", nlohmann::json::array())) {
 					Image image;
-					image.material = Catalog::NormalizeMaterialPath(img.value("material", ""));
-					image.slot = Catalog::NormalizeMaterialPath(img.value("slot", ""));
-					image.width = img.value("width", 0);
-					image.height = img.value("height", 0);
-					const auto category = Settings::NormalizeCategory(img.value("category", ""));
+					image.material = Catalog::NormalizeMaterialPath(Str(img, "material"));
+					image.slot = Catalog::NormalizeMaterialPath(Str(img, "slot"));
+					image.width = Int(img, "width");
+					image.height = Int(img, "height");
+					const auto category = Settings::NormalizeCategory(Str(img, "category"));
 					if (image.material.empty() || category.empty()) continue;
 					pack.images[category].push_back(std::move(image));
 					++count;

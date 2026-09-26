@@ -95,16 +95,18 @@ public static class Scanner
             standalone.Add((file, material));
         }
 
+        int missingTexture = 0, excluded = 0, noDims = 0, duplicate = 0;
+        string? missingExample = null;
         foreach (var (file, material) in standalone)
         {
             var diffuse = Paths.Normalize(material.DiffuseTexture ?? "", "textures");
             var diffusePath = Paths.WithRoot(diffuse, "textures");
-            if (usedDiffuse.Contains(diffusePath) || catalog.ByDiffuse.ContainsKey(diffuse)) continue;
-            if (!source.Files.TryGetValue(diffusePath, out var texture)) continue;
+            if (usedDiffuse.Contains(diffusePath) || catalog.ByDiffuse.ContainsKey(diffuse)) { duplicate++; continue; }
+            if (!source.Files.TryGetValue(diffusePath, out var texture)) { missingTexture++; missingExample ??= $"{file.DataPath} -> {diffusePath}"; continue; }
             var lowered = (file.DataPath + " " + diffusePath).ToLowerInvariant();
-            if (ExcludeWords.Any(w => Path.GetFileName(diffusePath).ToLowerInvariant().Contains(w))) continue;
+            if (ExcludeWords.Any(w => Path.GetFileName(diffusePath).ToLowerInvariant().Contains(w))) { excluded++; continue; }
             var dims = texture.Dimensions();
-            if (dims == null) continue;
+            if (dims == null) { noDims++; continue; }
             var category = CategoryWords.FirstOrDefault(cw => lowered.Contains(cw.Word)).Category
                 ?? (dims.Value.Width >= dims.Value.Height * 1.8 ? "paintings" : "posters");
             var normal = Paths.Normalize(material.NormalTexture ?? "", "textures");
@@ -117,6 +119,10 @@ public static class Scanner
             };
         }
 
+        if (standalone.Count > 0)
+        {
+            report.Info($"{source.Name}: {standalone.Count} standalone materials: {images.Count} pictures, {duplicate} sharing a texture, {missingTexture} without their texture{(missingExample != null ? $" (e.g. {missingExample})" : "")}, {excluded} excluded by name, {noDims} unreadable");
+        }
         return images.Values.ToList();
     }
 

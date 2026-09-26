@@ -104,7 +104,7 @@ namespace GShuf::AutoTest
 		void LogStats(const char* a_stage)
 		{
 			const auto stats = Distributor::GetStats();
-			logger::info("autotest: {}: models seen {}, tracked geometries {}, swaps applied {}", a_stage, stats.modelsSeen, stats.tracked, stats.swapped);
+			logger::info("autotest: {}: models seen {}, tracked geometries {}, swaps applied {}, references with art {}, reference swaps {}", a_stage, stats.modelsSeen, stats.tracked, stats.swapped, stats.referencesSeen, stats.referenceSwaps);
 		}
 	}
 
@@ -160,6 +160,11 @@ namespace GShuf::AutoTest
 		std::thread([] {
 			std::this_thread::sleep_for(std::chrono::seconds(10));
 			LogStats("A (initial)");
+			Console("Screenshot");
+			Console("player.placeatme 249ED7 1");
+			Console("player.placeatme 249ED7 1");
+			std::this_thread::sleep_for(std::chrono::seconds(4));
+			LogStats("A2 (two placed frames)");
 			Console("Screenshot");
 			std::this_thread::sleep_for(std::chrono::seconds(3));
 			RunOnGameThread([] {

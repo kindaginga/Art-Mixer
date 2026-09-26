@@ -7,6 +7,19 @@ namespace GShuf::Catalog
 	namespace
 	{
 		std::unordered_map<std::string, Slot> s_slots;
+
+		// Reads a string field, treating a missing key or a JSON null as empty.
+		[[nodiscard]] std::string Str(const nlohmann::json& a_row, const char* a_key)
+		{
+			const auto it = a_row.find(a_key);
+			return it != a_row.end() && it->is_string() ? it->get<std::string>() : std::string();
+		}
+
+		[[nodiscard]] int Int(const nlohmann::json& a_row, const char* a_key)
+		{
+			const auto it = a_row.find(a_key);
+			return it != a_row.end() && it->is_number() ? it->get<int>() : 0;
+		}
 	}
 
 	std::string NormalizeMaterialPath(std::string_view a_path)
@@ -32,11 +45,11 @@ namespace GShuf::Catalog
 			const auto json = nlohmann::json::parse(file);
 			for (const auto& row : json) {
 				Slot slot;
-				slot.material = NormalizeMaterialPath(row.value("material", ""));
-				slot.category = Settings::NormalizeCategory(row.value("category", ""));
-				slot.width = row.value("width", 0);
-				slot.height = row.value("height", 0);
-				slot.blank = Settings::Lower(row.value("diffuse", "")).find("paintingcanvas") != std::string::npos;
+				slot.material = NormalizeMaterialPath(Str(row, "material"));
+				slot.category = Settings::NormalizeCategory(Str(row, "category"));
+				slot.width = Int(row, "width");
+				slot.height = Int(row, "height");
+				slot.blank = Settings::Lower(Str(row, "diffuse")).find("paintingcanvas") != std::string::npos;
 				if (slot.material.empty() || slot.category.empty()) continue;
 				s_slots[slot.material] = std::move(slot);
 			}

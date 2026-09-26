@@ -48,6 +48,8 @@ public sealed class Writer
         {
             var stem = Path.GetFileNameWithoutExtension(image.Diffuse);
             if (stem.EndsWith("_d", StringComparison.OrdinalIgnoreCase)) stem = stem[..^2];
+            var bar = image.Diffuse.IndexOf('|');
+            if (bar > 0) stem = Sources.Sanitize(image.Diffuse[..bar]) + "-" + stem;
             stem = Sources.Sanitize(stem);
             var unique = stem;
             for (var n = 2; !names.Add(unique); n++) unique = $"{stem}-{n}";
@@ -110,7 +112,9 @@ public sealed class Writer
             {
                 id = p.Id,
                 name = p.Name,
-                images = p.Images.Select(i => new { category = i.Category, material = i.Material, slot = i.Slot, width = i.Width, height = i.Height }),
+                images = p.Images.Select(i => i.Slot != null
+                    ? (object)new { category = i.Category, material = i.Material, slot = i.Slot, width = i.Width, height = i.Height }
+                    : new { category = i.Category, material = i.Material, width = i.Width, height = i.Height }),
             }),
         };
         WriteFile(Path.Combine("GShuf", "packs.json"), JsonSerializer.SerializeToUtf8Bytes(doc, new JsonSerializerOptions { WriteIndented = true }));
@@ -223,13 +227,15 @@ public sealed class GameFiles
     public GameFiles(string gameFolder, Report report)
     {
         var data = Path.Combine(gameFolder, "Data");
-        foreach (var path in Directory.EnumerateFiles(data, "Fallout4 - *.ba2").OrderBy(p => p))
+        // Fallout4 archives first, then the DLC archives, so base game files win when both carry a path.
+        foreach (var path in Directory.EnumerateFiles(data, "*.ba2").OrderBy(p => Path.GetFileName(p).StartsWith("Fallout4 - ", StringComparison.OrdinalIgnoreCase) ? 0 : 1).ThenBy(p => p))
         {
             var name = Path.GetFileName(path);
+            if (!name.StartsWith("Fallout4 - ", StringComparison.OrdinalIgnoreCase) && !name.StartsWith("DLC", StringComparison.OrdinalIgnoreCase)) continue;
             try
             {
-                if (name.StartsWith("Fallout4 - Materials", StringComparison.OrdinalIgnoreCase)) _materials.Add(new Ba2Archive(path));
-                else if (name.StartsWith("Fallout4 - Textures", StringComparison.OrdinalIgnoreCase)) _textures.Add(new Ba2Archive(path));
+                if (name.Contains(" - Materials", StringComparison.OrdinalIgnoreCase)) _materials.Add(new Ba2Archive(path));
+                else if (name.Contains(" - Textures", StringComparison.OrdinalIgnoreCase)) _textures.Add(new Ba2Archive(path));
             }
             catch (Exception e)
             {

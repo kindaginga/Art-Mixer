@@ -81,6 +81,7 @@ bool Plugin::Initialize(const F4SE::LoadInterface* a_f4se)
 	GShuf::Settings::Load();
 	if (engine) {
 		GShuf::Engine::InstallHooks(&GShuf::Distributor::OnModelLoaded);
+		GShuf::Engine::InstallReferenceHook(&GShuf::Distributor::OnReference3D);
 	}
 	GShuf::AutoTest::Configure();
 

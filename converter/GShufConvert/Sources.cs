@@ -1,6 +1,7 @@
 using System.Xml;
 using SharpCompress.Archives;
 using SharpCompress.Common;
+using SharpCompress.Readers;
 
 namespace GShufConvert;
 
@@ -49,14 +50,17 @@ public static class Sources
         var sources = new List<Source>();
         if (fomod != null)
         {
-            foreach (var (option, folders) in FomodOptions(fomod, report))
+            var archiveRoot = Path.GetDirectoryName(Path.GetDirectoryName(fomod))!;
+            foreach (var (option, entries) in FomodOptions(fomod, report))
             {
                 var source = new Source { Name = option == "" ? name : $"{name} - {option}", Origin = input };
-                foreach (var sub in folders)
+                report.Info($"{source.Name}: FOMOD sources: {string.Join("; ", entries)}");
+                foreach (var entry in entries)
                 {
-                    var dir = Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(fomod))!, sub.Replace('/', '\\'));
-                    if (Directory.Exists(dir)) AddFolder(source, dir, report);
-                    else report.Warn($"{name}: FOMOD folder missing: {sub}");
+                    var path = Path.Combine(archiveRoot, entry.Replace('/', '\\'));
+                    if (Directory.Exists(path)) AddFolder(source, path, report);
+                    else if (File.Exists(path) && path.EndsWith(".ba2", StringComparison.OrdinalIgnoreCase)) AddArchive(source, path, Path.GetFileName(path), report);
+                    else if (!File.Exists(path)) report.Warn($"{name}: FOMOD source missing: {entry}");
                 }
                 if (source.Files.Count > 0) sources.Add(source);
             }
@@ -72,37 +76,85 @@ public static class Sources
     private static void Extract(string archive, string folder, Report report)
     {
         Directory.CreateDirectory(folder);
-        using var reader = ArchiveFactory.OpenArchive(archive);
+        using var opened = ArchiveFactory.OpenArchive(archive);
+        var options = new ExtractionOptions { ExtractFullPath = true, Overwrite = true };
         var count = 0;
-        foreach (var entry in reader.Entries.Where(e => !e.IsDirectory))
+        if (opened.IsSolid || opened.Type == ArchiveType.SevenZip)
         {
-            entry.WriteToDirectory(folder, new ExtractionOptions { ExtractFullPath = true, Overwrite = true });
-            count++;
+            // Solid archives decompress from the start for every random access, so they are read once, sequentially.
+            using var reader = opened.ExtractAllEntries();
+            while (reader.MoveToNextEntry())
+            {
+                if (reader.Entry.IsDirectory) continue;
+                reader.WriteEntryToDirectory(folder, options);
+                count++;
+            }
+        }
+        else
+        {
+            foreach (var entry in opened.Entries.Where(e => !e.IsDirectory))
+            {
+                entry.WriteToDirectory(folder, options);
+                count++;
+            }
         }
         report.Info($"extracted {count} files from {Path.GetFileName(archive)}");
     }
 
-    /// <summary>Option name to the list of folders (relative to the archive root) it installs; "" is the always-installed set.</summary>
-    private static List<(string Option, List<string> Folders)> FomodOptions(string configPath, Report report)
+    /// <summary>Option name to the sources (folders or files, relative to the archive root) it installs; "" is the always-installed set.</summary>
+    private static List<(string Option, List<string> Sources)> FomodOptions(string configPath, Report report)
     {
         var result = new List<(string, List<string>)>();
         try
         {
             var doc = new XmlDocument();
             doc.Load(configPath);
-            var required = new List<string>();
-            foreach (XmlElement folder in doc.SelectNodes("//requiredInstallFiles//folder")!)
+            static List<string> SourcesOf(XmlNode node)
             {
-                required.Add(folder.GetAttribute("source"));
+                var list = new List<string>();
+                foreach (XmlElement e in node.SelectNodes(".//folder")!) list.Add(e.GetAttribute("source"));
+                foreach (XmlElement e in node.SelectNodes(".//file")!) list.Add(e.GetAttribute("source"));
+                return list.Where(x => x.Length > 0).ToList();
             }
+            var required = new List<string>();
+            foreach (XmlElement node in doc.SelectNodes("//requiredInstallFiles")!) required.AddRange(SourcesOf(node));
+
+            // Conditional patterns install extra sources when flags set by chosen plugins match.
+            var patterns = new List<(List<(string Flag, string Value)> Deps, List<string> Sources)>();
+            foreach (XmlElement pattern in doc.SelectNodes("//conditionalFileInstalls//pattern")!)
+            {
+                var deps = new List<(string, string)>();
+                foreach (XmlElement dep in pattern.SelectNodes(".//flagDependency")!) deps.Add((dep.GetAttribute("flag"), dep.GetAttribute("value")));
+                var files = pattern.SelectSingleNode("files");
+                if (files != null) patterns.Add((deps, SourcesOf(files)));
+            }
+
+            var pluginNames = doc.SelectNodes("//plugin")!.Cast<XmlElement>().Select(p => p.GetAttribute("name")).ToList();
+            static bool Generic(string name) => name.Trim().ToLowerInvariant() is "yes" or "no" or "install" or "default" or "none" or "on" or "off";
             foreach (XmlElement plugin in doc.SelectNodes("//plugin")!)
             {
-                var folders = new List<string>(required);
-                foreach (XmlElement folder in plugin.SelectNodes(".//folder")!) folders.Add(folder.GetAttribute("source"));
-                foreach (XmlElement file in plugin.SelectNodes(".//file")!) folders.Add(file.GetAttribute("source"));
-                if (folders.Count > required.Count) result.Add((plugin.GetAttribute("name"), folders));
+                // Options install the always-required files too; later cross-option deduplication keeps each picture in one pack.
+                var sources = new List<string>(required);
+                var files = plugin.SelectSingleNode("files");
+                if (files != null) sources.AddRange(SourcesOf(files));
+                var flags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (XmlElement flag in plugin.SelectNodes("conditionFlags/flag")!) flags[flag.GetAttribute("name")] = flag.InnerText.Trim();
+                foreach (var (deps, patternSources) in patterns)
+                {
+                    // A pattern belongs to this option when the option sets at least one of its flags and contradicts none.
+                    var owned = deps.Where(d => flags.ContainsKey(d.Flag)).ToList();
+                    if (owned.Count > 0 && owned.All(d => flags[d.Flag].Equals(d.Value, StringComparison.OrdinalIgnoreCase))) sources.AddRange(patternSources);
+                }
+                var pluginName = plugin.GetAttribute("name");
+                var groupName = (plugin.ParentNode?.ParentNode as XmlElement)?.GetAttribute("name") ?? "";
+                if ((Generic(pluginName) || pluginNames.Count(n => n == pluginName) > 1) && groupName.Length > 0) pluginName = $"{groupName} - {pluginName}";
+                if (sources.Count > required.Count) result.Add((pluginName, sources.Distinct(StringComparer.OrdinalIgnoreCase).ToList()));
             }
-            if (result.Count == 0 && required.Count > 0) result.Add(("", required));
+            foreach (var (deps, patternSources) in patterns)
+            {
+                if (deps.Count == 0) required.AddRange(patternSources);
+            }
+            if (required.Count > 0) result.Insert(0, ("", required.Distinct(StringComparer.OrdinalIgnoreCase).ToList()));
         }
         catch (Exception e)
         {
@@ -120,25 +172,7 @@ public static class Sources
             var relative = Path.GetRelativePath(dataRoot, path).Replace('/', '\\');
             if (relative.EndsWith(".ba2", StringComparison.OrdinalIgnoreCase))
             {
-                try
-                {
-                    var archive = new Ba2Archive(path);
-                    foreach (var inner in archive.Paths)
-                    {
-                        var innerPath = inner;
-                        source.Files[innerPath] = new SourceFile
-                        {
-                            DataPath = innerPath,
-                            Read = () => archive.Read(innerPath),
-                            Dimensions = () => archive.Dimensions(innerPath),
-                        };
-                    }
-                    report.Info($"{source.Name}: {archive.Count} files in {relative}");
-                }
-                catch (Exception e)
-                {
-                    report.Warn($"{source.Name}: cannot read {relative}: {e.Message}");
-                }
+                AddArchive(source, path, relative, report);
                 continue;
             }
             var file = path;
@@ -155,6 +189,29 @@ public static class Sources
                     return Dds.ReadDimensions(head[..read]);
                 },
             };
+        }
+    }
+
+    private static void AddArchive(Source source, string path, string label, Report report)
+    {
+        try
+        {
+            var archive = new Ba2Archive(path);
+            foreach (var inner in archive.Paths)
+            {
+                var innerPath = inner;
+                source.Files[innerPath] = new SourceFile
+                {
+                    DataPath = innerPath,
+                    Read = () => archive.Read(innerPath),
+                    Dimensions = () => archive.Dimensions(innerPath),
+                };
+            }
+            report.Info($"{source.Name}: {archive.Count} files in {label}");
+        }
+        catch (Exception e)
+        {
+            report.Warn($"{source.Name}: cannot read {label}: {e.Message}");
         }
     }
 
@@ -184,7 +241,11 @@ public static class Sources
     {
         var parts = fileName.Split('-');
         var keep = parts.Length;
-        while (keep > 1 && parts[keep - 1].Trim().All(char.IsDigit) && parts[keep - 1].Trim().Length > 0) keep--;
-        return string.Join("-", parts.Take(keep)).Trim();
+        static bool IsVersionish(string part) => part.Length > 0 && part.All(c => char.IsDigit(c) || c == '.' || c == ' ') && part.Any(char.IsDigit);
+        while (keep > 1 && IsVersionish(parts[keep - 1].Trim())) keep--;
+        var name = string.Join("-", parts.Take(keep)).Trim();
+        var words = name.Split(' ');
+        while (words.Length > 1 && IsVersionish(words[^1]) ) words = words[..^1];
+        return string.Join(" ", words).Trim();
     }
 }

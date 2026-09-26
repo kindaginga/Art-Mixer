@@ -6,6 +6,7 @@ string? game = null;
 string? output = null;
 var inputs = new List<string>();
 var includeVanilla = true;
+var keepTemp = false;
 for (var i = 0; i < args.Length; i++)
 {
     switch (args[i])
@@ -13,6 +14,7 @@ for (var i = 0; i < args.Length; i++)
         case "--game": game = args[++i]; break;
         case "--out": output = args[++i]; break;
         case "--no-vanilla": includeVanilla = false; break;
+        case "--keep-temp": keepTemp = true; break;
         case "--help" or "-h" or "/?": Usage(); return 0;
         default: inputs.Add(args[i]); break;
     }
@@ -57,14 +59,49 @@ var packs = new List<PackOutput>();
 var usedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "vanilla" };
 foreach (var input in inputs)
 {
+    var scanned = new List<(Source Source, List<FoundImage> Images)>();
+    var emitted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     foreach (var source in Sources.Load(input, temp, report))
     {
-        var images = Scanner.Scan(source, catalog, report);
+        // A picture that an earlier option group of the same mod already provides is not repeated in later groups.
+        var images = Scanner.Scan(source, catalog, report).Where(i => emitted.Add(i.Diffuse + "|" + (i.Slot ?? ""))).ToList();
         if (images.Count == 0)
         {
-            report.Warn($"{source.Name}: no art found (no vanilla-path textures, no materials with textures, no gshuf-pack.json); skipped");
+            report.Info($"{source.Name}: no art found (no vanilla-path textures, no materials with textures, no gshuf-pack.json); skipped");
             continue;
         }
+        scanned.Add((source, images));
+    }
+    // FOMOD options that offer only a few pictures (one pinup per frame, for example) pool into one pack for the mod.
+    var small = scanned.Where(x => x.Images.Count < 4).ToList();
+    if (scanned.Count > 1 && small.Count > 1)
+    {
+        var modName = Sources.DisplayName(Path.GetFileNameWithoutExtension(input.TrimEnd('\\', '/')));
+        var merged = new Source { Name = $"{modName} - Individual pictures", Origin = input };
+        var mergedImages = new List<FoundImage>();
+        foreach (var (source, images) in small)
+        {
+            var prefix = Sources.Sanitize(source.Name) + "|";
+            foreach (var image in images)
+            {
+                merged.Files[prefix + image.Diffuse] = source.Files[image.Diffuse];
+                if (image.Normal != null && source.Files.TryGetValue(image.Normal, out var normal)) merged.Files[prefix + image.Normal] = normal;
+                if (image.MaterialSource != null && source.Files.TryGetValue(image.MaterialSource, out var material)) merged.Files[prefix + image.MaterialSource] = material;
+                mergedImages.Add(new FoundImage
+                {
+                    Category = image.Category, Slot = image.Slot, Width = image.Width, Height = image.Height,
+                    Diffuse = prefix + image.Diffuse,
+                    Normal = image.Normal != null ? prefix + image.Normal : null,
+                    MaterialSource = image.MaterialSource != null ? prefix + image.MaterialSource : null,
+                });
+            }
+        }
+        report.Info($"{modName}: pooled {small.Count} small options ({mergedImages.Count} pictures) into '{merged.Name}'");
+        scanned = scanned.Except(small).ToList();
+        scanned.Add((merged, mergedImages));
+    }
+    foreach (var (source, images) in scanned)
+    {
         var pack = writer.WritePack(source, images, usedIds);
         if (pack.Images.Count > 0) packs.Add(pack);
     }
@@ -74,7 +111,7 @@ writer.WritePacksJson(packs);
 writer.WriteMcm(packs, slotsPerCategory);
 File.Copy(catalogPath, Path.Combine(output, "GShuf", "vanilla-slots.json"), overwrite: true);
 writer.WriteReport();
-try { Directory.Delete(temp, recursive: true); } catch { /* temp cleanup is best effort */ }
+if (!keepTemp) { try { Directory.Delete(temp, recursive: true); } catch { /* temp cleanup is best effort */ } }
 
 report.Info($"done: {packs.Count} packs written to {output} ({report.Warnings} warnings)");
 return 0;
@@ -85,4 +122,5 @@ static void Usage()
     Console.WriteLine("  Converts art mods (loose folders, .zip/.7z/.rar archives, FOMODs, BA2 archives) into Gallery Shuffle packs,");
     Console.WriteLine("  copies the vanilla art into its own pack, and writes the MCM pages. Run it again after adding or removing mods.");
     Console.WriteLine("  --no-vanilla   skip the vanilla pack");
+    Console.WriteLine("  --keep-temp    keep the extracted archives in the temp folder for inspection");
 }
