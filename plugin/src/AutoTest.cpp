@@ -119,6 +119,8 @@ namespace GShuf::AutoTest
 		if (!file) return false;
 		std::string line;
 		bool inSection = false;
+		bool picker = true;
+		bool skipVideos = true;
 		while (std::getline(file, line)) {
 			const auto text = Settings::Lower(line);
 			if (text.find('[') != std::string::npos) {
@@ -136,8 +138,14 @@ namespace GShuf::AutoTest
 			if (key.find("sloadsave") != std::string::npos) s_save = value;
 			if (key.find("smode") != std::string::npos) s_mode = Settings::Lower(value);
 			if (key.find("smenuvideo") != std::string::npos) s_menuVideo = value;
+			if (key.find("bpicker") != std::string::npos) picker = value == "1";
+			if (key.find("bskipvideos") != std::string::npos) skipVideos = value == "1";
 		}
-		if (s_enabled) MainMenu::SetSkipStartupVideos(true);
+		if (s_enabled) {
+			MainMenu::SetSkipStartupVideos(skipVideos);
+			MainMenu::SetPickerEnabled(picker);
+			logger::info("autotest: picker {}, startup videos {}", picker ? "on" : "off", skipVideos ? "skipped" : "played");
+		}
 		if (s_enabled && s_mode == "mainmenu") {
 			logger::info("autotest: main menu mode, video '{}'", s_menuVideo);
 			if (!s_menuVideo.empty()) MainMenu::SetOptions({ { "Vanilla", "" }, { "Test video", s_menuVideo } }, 0);

@@ -24,6 +24,15 @@ function Capture-Desktop([string] $path) {
 foreach ($p in Get-Process ModOrganizer -ErrorAction SilentlyContinue) { $null = $p.CloseMainWindow(); $p.WaitForExit(15000) | Out-Null; if (-not $p.HasExited) { $p.Kill() } }
 if (Get-Process Fallout4 -ErrorAction SilentlyContinue) { throw "a Fallout4.exe is already running" }
 
+# The game saves its window position on exit; a minimized exit stores -32000,-32000, which lands the next window on a secondary monitor.
+$custom = "$env:LOCALAPPDATA\ModOrganizer\$Instance\profiles\$Profile\Fallout4Custom.ini"
+if (Test-Path $custom) {
+    $ini = Get-Content $custom -Raw
+    $fixed = [regex]::Replace($ini, "(?m)^iLocation X=.*$", "iLocation X=0")
+    $fixed = [regex]::Replace($fixed, "(?m)^iLocation Y=.*$", "iLocation Y=0")
+    if ($fixed -ne $ini) { Set-Content $custom $fixed -Encoding ascii -NoNewline; "window position reset to the primary monitor" }
+}
+
 $before = @(Get-ChildItem $GameRoot -Filter "ScreenShot*.png" -ErrorAction SilentlyContinue | ForEach-Object Name)
 $crashBefore = @(Get-ChildItem $docs -Filter "crash-*.log" -ErrorAction SilentlyContinue | ForEach-Object Name)
 Get-ChildItem $GameRoot -Filter "gshuf-capture-*.png" -ErrorAction SilentlyContinue | Remove-Item -Force

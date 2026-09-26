@@ -20,6 +20,8 @@ namespace GShuf::MainMenu
 	[[nodiscard]] bool AtMainMenu();
 	// Refuses every video except the menu loop, so an automated run reaches the menu without the intro.
 	void SetSkipStartupVideos(bool a_skip);
+	// Leaves the corner picker unregistered when false (autotest baseline without it).
+	void SetPickerEnabled(bool a_enabled);
 	[[nodiscard]] int Selected();
 	[[nodiscard]] int OptionCount();
 	// Applies a choice by index and re-shows the main menu so the new video starts.

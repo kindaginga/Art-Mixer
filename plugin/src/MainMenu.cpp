@@ -20,7 +20,8 @@ namespace GShuf::MainMenu
 		std::atomic<int> s_opens{ 0 };
 		std::atomic<bool> s_loopOpen{ false };    // the menu loop video has been opened: the intro is over and the real menu is up
 		std::atomic<bool> s_registered{ false };  // the picker menu is registered with the UI
-		std::atomic<bool> s_skipStartup{ false };  // autotest: startup videos are refused so the menu comes up at once
+		std::atomic<bool> s_skipStartup{ false };
+		std::atomic<bool> s_pickerEnabled{ true };  // autotest: startup videos are refused so the menu comes up at once
 		constexpr auto kPickerMenu = "GShufPicker"sv;
 		void ShowPicker(bool a_show);
 		std::vector<std::string> s_optionIds;
@@ -125,7 +126,7 @@ namespace GShuf::MainMenu
 		public:
 			PickerMenu()
 			{
-				menuFlags.set(RE::UI_MENU_FLAGS::kUsesCursor, RE::UI_MENU_FLAGS::kDontHideCursorWhenTopmost, RE::UI_MENU_FLAGS::kUpdateUsesCursor, RE::UI_MENU_FLAGS::kTopmostRenderedMenu);
+				menuFlags.set(RE::UI_MENU_FLAGS::kUsesCursor, RE::UI_MENU_FLAGS::kDontHideCursorWhenTopmost, RE::UI_MENU_FLAGS::kUpdateUsesCursor);
 				depthPriority = RE::UI_DEPTH_PRIORITY::kMessage;
 				// Copies the render setup of the real main menu so the picker draws in the same layer.
 				if (auto* ui = RE::UI::GetSingleton(); ui) {
@@ -224,6 +225,10 @@ namespace GShuf::MainMenu
 			return;
 		}
 		ui->RegisterSink<RE::MenuOpenCloseEvent>(&s_sink);
+		if (!s_pickerEnabled.load()) {
+			logger::info("mainmenu: picker disabled by the autotest");
+			return;
+		}
 		ui->RegisterMenu(kPickerMenu.data(), &PickerMenu::Create);
 		s_registered.store(true);
 		const bool mainOpen = ui->GetMenuOpen("MainMenu");
@@ -234,6 +239,11 @@ namespace GShuf::MainMenu
 	void SetSkipStartupVideos(bool a_skip)
 	{
 		s_skipStartup.store(a_skip);
+	}
+
+	void SetPickerEnabled(bool a_enabled)
+	{
+		s_pickerEnabled.store(a_enabled);
 	}
 
 	bool AtMainMenu()
