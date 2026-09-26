@@ -1,0 +1,14 @@
+{
+  "name": "galleryshuffle",
+  "version-string": "0.1.0",
+  "description": "Gallery Shuffle F4SE plugin",
+  "license": "MIT",
+  "dependencies": [
+    "boost-stl-interfaces",
+    "fmt",
+    "nlohmann-json",
+    "rsm-mmio",
+    "spdlog",
+    "zydis"
+  ]
+}

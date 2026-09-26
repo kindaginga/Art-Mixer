@@ -7,3 +7,9 @@ converter/**/bin/
 converter/**/obj/
 CMakeUserPresets.json
 tools/launch.cmd
+
+plugin/build/
+tools/BuildEsl/bin/
+tools/BuildEsl/obj/
+converter/**/bin/
+converter/**/obj/

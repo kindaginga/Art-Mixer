@@ -631,6 +631,7 @@ namespace
 			std::vector<std::pair<std::uint32_t, std::size_t>> branches;
 			const auto decoded = REL::detail::for_each_direct_relative_branch(
 				code,
+				static_cast<std::uint32_t>(function.begin),
 				[&](std::size_t a_offset, std::uint8_t) {
 					std::int32_t displacement{};
 					std::memcpy(std::addressof(displacement), code.data() + a_offset + 1,
