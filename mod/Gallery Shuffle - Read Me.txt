@@ -44,14 +44,13 @@ Open a command prompt in the converter folder and run:
   --out    where to write the "Gallery Shuffle Packs" mod. For Mod Organizer 2 this is a new folder inside
            your instance's "mods" folder. For Vortex use any folder, then zip it and install the zip.
   then     any number of art mods: archives (.zip, .7z, .rar), unpacked folders, FOMOD archives.
-           A FOMOD with several options becomes one pack per option.
+           Each mod becomes one pack; a FOMOD's option sets are pooled into it, so alternative versions
+           of the same picture are shuffled too. Add --split-options to get one pack per option instead.
 
 Run it again whenever you add or remove art mods; it rebuilds the packs and the MCM pages.
 The file GShuf\convert-report.txt in the output lists what was found in each mod.
 
-Each category page has 10 pack slots. A FOMOD with many option sets can fill them quickly; the report
-names any pack that got no slider. Options that offer fewer than 4 pictures are pooled into one pack
-called "<mod> - Individual pictures".
+Each category page has 10 pack slots; the report names any pack that got no slider.
 
 What the converter recognizes:
   - Textures at vanilla art paths (replacer mods): each picture is tied to the vanilla frame it replaces.

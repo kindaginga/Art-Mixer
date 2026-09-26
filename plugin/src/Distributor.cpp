@@ -68,10 +68,12 @@ namespace GShuf::Distributor
 			const auto it = a_pack.images.find(a_slot.category);
 			if (it == a_pack.images.end() || it->second.empty()) return nullptr;
 			const auto& images = it->second;
-			for (const auto& image : images) {
-				if (!image.slot.empty() && image.slot == a_slot.material) return &image;
-			}
+			// Several variants for the same frame (a replacer's clean and damaged sets, for example) are picked among by hash.
 			std::vector<const Packs::Image*> matching;
+			for (const auto& image : images) {
+				if (!image.slot.empty() && image.slot == a_slot.material) matching.push_back(&image);
+			}
+			if (!matching.empty()) return matching[static_cast<std::size_t>(a_hash % matching.size())];
 			for (const auto& image : images) {
 				if (SameAspect(image.width, image.height, a_slot.width, a_slot.height)) matching.push_back(&image);
 			}

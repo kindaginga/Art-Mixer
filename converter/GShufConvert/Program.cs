@@ -8,6 +8,7 @@ string? output = null;
 var inputs = new List<string>();
 var includeVanilla = true;
 var keepTemp = false;
+var splitOptions = false;
 for (var i = 0; i < args.Length; i++)
 {
     switch (args[i])
@@ -16,6 +17,7 @@ for (var i = 0; i < args.Length; i++)
         case "--out": output = args[++i]; break;
         case "--no-vanilla": includeVanilla = false; break;
         case "--keep-temp": keepTemp = true; break;
+        case "--split-options": splitOptions = true; break;
         case "--help" or "-h" or "/?": Usage(); return 0;
         default: inputs.Add(args[i]); break;
     }
@@ -73,12 +75,13 @@ foreach (var input in inputs)
         }
         scanned.Add((source, images));
     }
-    // FOMOD options that offer only a few pictures (one pinup per frame, for example) pool into one pack for the mod.
-    var small = scanned.Where(x => x.Images.Count < 4).ToList();
+    // One pack per mod: FOMOD options pool together (duplicates were already dropped by content), so alternative
+    // sets of the same frames become variants the plugin picks among. --split-options keeps one pack per option.
+    var small = splitOptions ? scanned.Where(x => x.Images.Count < 4).ToList() : scanned.ToList();
     if (scanned.Count > 1 && small.Count > 1)
     {
         var modName = Sources.DisplayName(Path.GetFileNameWithoutExtension(input.TrimEnd('\\', '/')));
-        var merged = new Source { Name = $"{modName} - Individual pictures", Origin = input };
+        var merged = new Source { Name = splitOptions ? $"{modName} - Individual pictures" : modName, Origin = input };
         var mergedImages = new List<FoundImage>();
         foreach (var (source, images) in small)
         {
@@ -97,7 +100,7 @@ foreach (var input in inputs)
                 });
             }
         }
-        report.Info($"{modName}: pooled {small.Count} small options ({mergedImages.Count} pictures) into '{merged.Name}'");
+        report.Info($"{modName}: pooled {small.Count} options ({mergedImages.Count} pictures) into '{merged.Name}'");
         scanned = scanned.Except(small).ToList();
         scanned.Add((merged, mergedImages));
     }
@@ -124,4 +127,5 @@ static void Usage()
     Console.WriteLine("  copies the vanilla art into its own pack, and writes the MCM pages. Run it again after adding or removing mods.");
     Console.WriteLine("  --no-vanilla   skip the vanilla pack");
     Console.WriteLine("  --keep-temp    keep the extracted archives in the temp folder for inspection");
+    Console.WriteLine("  --split-options   one pack per FOMOD option instead of one pack per mod");
 }
