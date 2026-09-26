@@ -5,14 +5,40 @@ namespace GShufConvert;
 public static class Program
 {
     // Without arguments the converter opens its window; with arguments it runs on the command line.
+    private static readonly string LogPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GalleryShuffle", "converter.log");
+
+    // Startup diagnostics: what the process was started with and any crash, for launches through a mod manager.
+    private static void Log(string line)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
+            File.AppendAllText(LogPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {line}{Environment.NewLine}");
+        }
+        catch { /* logging is best effort */ }
+    }
+
     [STAThread]
     public static int Main(string[] args)
     {
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => Log("unhandled: " + e.ExceptionObject);
+        Log($"start: exe '{Environment.ProcessPath}' base '{AppContext.BaseDirectory}' cwd '{Environment.CurrentDirectory}' args [{string.Join(" | ", args)}]");
         if (args.Length == 0)
         {
-            ApplicationConfiguration.Initialize();
-            Application.Run(new MainForm());
-            return 0;
+            try
+            {
+                ApplicationConfiguration.Initialize();
+                Application.ThreadException += (_, e) => Log("thread exception: " + e.Exception);
+                Application.Run(new MainForm());
+                Log("window closed");
+                return 0;
+            }
+            catch (Exception e)
+            {
+                Log("window failed: " + e);
+                MessageBox.Show(e.ToString(), "Gallery Shuffle Converter");
+                return 1;
+            }
         }
 
         AttachConsole(-1);

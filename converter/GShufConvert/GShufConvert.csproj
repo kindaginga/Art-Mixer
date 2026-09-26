@@ -11,6 +11,7 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <CETCompat>false</CETCompat>
   </PropertyGroup>
 
   <ItemGroup>
