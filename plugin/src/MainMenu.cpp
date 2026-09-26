@@ -18,6 +18,10 @@ namespace GShuf::MainMenu
 		std::vector<Option> s_options;
 		int s_selected{ 0 };
 		std::atomic<int> s_opens{ 0 };
+		std::atomic<int> s_inputLogs{ 0 };
+		std::atomic<int> s_cursorX{ -1 };
+		std::atomic<int> s_cursorY{ -1 };
+		std::atomic<int> s_cursorLogs{ 0 };
 		std::atomic<bool> s_loopOpen{ false };    // the menu loop video has been opened: the intro is over and the real menu is up
 		std::atomic<bool> s_registered{ false };  // the picker menu is registered with the UI
 		std::atomic<bool> s_skipStartup{ false };
@@ -138,6 +142,16 @@ namespace GShuf::MainMenu
 				auto* manager = RE::BSScaleformManager::GetSingleton();
 				const bool loaded = manager && manager->LoadMovieEx(*this, "Interface/GShufPicker.swf", "root1");
 				logger::info("mainmenu: picker movie loaded {}, menuObj object {}", loaded, menuObj.IsObject());
+				// LoadMovieEx leaves the SWF without BGSCodeObj, so the bridge object is built here: this menu is the function handler.
+				if (loaded && uiMovie && menuObj.IsObject()) {
+					RE::Scaleform::GFx::Value codeObj, onSelect, check;
+					uiMovie->CreateObject(&codeObj);
+					uiMovie->CreateFunction(&onSelect, this, reinterpret_cast<void*>(0));
+					const bool setFn = codeObj.SetMember("onSelect", onSelect);
+					const bool setObj = menuObj.SetMember("BGSCodeObj", codeObj);
+					const bool readable = menuObj.GetMember("BGSCodeObj", &check) && check.IsObject();
+					logger::info("mainmenu: picker BGSCodeObj set {} (onSelect {}), readable {}", setObj, setFn, readable);
+				}
 				if (loaded) PushOptions();
 			}
 
@@ -146,16 +160,40 @@ namespace GShuf::MainMenu
 				MapCodeMethodToASFunction("onSelect", 0);
 			}
 
-			// Keys and gamepad buttons belong to the main menu underneath; the picker only takes mouse clicks through Scaleform.
-			bool ShouldHandleEvent(const RE::InputEvent*) override { return false; }
-			void HandleEvent(const RE::ButtonEvent*) override {}
+			// Keys and gamepad buttons belong to the main menu underneath; mouse events go to the engine's own handler so clicks reach the movie.
+			bool ShouldHandleEvent(const RE::InputEvent* a_event) override
+			{
+				if (!a_event) return false;
+				const bool mouse = a_event->device == RE::INPUT_DEVICE::kMouse;
+				const bool base = mouse && RE::GameMenuBase::ShouldHandleEvent(a_event);
+				if (a_event->eventType == RE::INPUT_EVENT_TYPE::kCursorMove) {
+					const auto* move = static_cast<const RE::CursorMoveEvent*>(a_event);
+					s_cursorX.store(move->cursorPosX);
+					s_cursorY.store(move->cursorPosY);
+					if (s_cursorLogs.fetch_add(1) < 3) logger::info("mainmenu: picker cursor event at ({}, {}), base {}", move->cursorPosX, move->cursorPosY, base);
+				} else if (s_inputLogs.fetch_add(1) < 40) {
+					logger::info("mainmenu: picker input device {} type {} -> mouse {}, base {}", static_cast<int>(a_event->device.get()), static_cast<int>(a_event->eventType.get()), mouse, base);
+				}
+				return base;
+			}
+
+			void HandleEvent(const RE::ButtonEvent* a_event) override
+			{
+				if (!a_event || a_event->device != RE::INPUT_DEVICE::kMouse) return;
+				if (s_inputLogs.load() < 60) { ++s_inputLogs; logger::info("mainmenu: picker mouse button {} value {}", a_event->idCode, a_event->value); }
+				RE::GameMenuBase::HandleEvent(a_event);
+			}
 
 			void Call(const Params& a_params) override
 			{
-				// The first argument is the mapped function id, the rest are the ActionScript arguments.
-				if (a_params.argCount < 2 || !a_params.args[0].IsNumber() || !a_params.args[1].IsNumber()) return;
-				const auto id = static_cast<int>(a_params.args[0].GetNumber());
-				const auto index = static_cast<int>(a_params.args[1].GetNumber());
+				// userData carries the function id given at creation; the ActionScript arguments follow.
+				const auto id = reinterpret_cast<std::uintptr_t>(a_params.userData);
+				const auto* arg = a_params.argCount >= 1 ? &a_params.args[0] : nullptr;
+				if (!arg || !(arg->IsNumber() || arg->IsInt() || arg->IsUInt())) {
+					logger::info("mainmenu: picker call id {} with {} arguments, ignored", id, a_params.argCount);
+					return;
+				}
+				const auto index = arg->IsNumber() ? static_cast<int>(arg->GetNumber()) : arg->IsInt() ? arg->GetInt() : static_cast<int>(arg->GetUInt());
 				logger::info("mainmenu: picker call id {} index {}", id, index);
 				if (id == 0) Select(index);
 			}
@@ -279,6 +317,11 @@ namespace GShuf::MainMenu
 		std::scoped_lock lock(s_mutex);
 		s_optionIds = std::move(ids);
 		logger::info("mainmenu: {} video options, selected {} ('{}')", s_options.size(), s_selected, saved);
+	}
+
+	std::pair<int, int> CursorPos()
+	{
+		return { s_cursorX.load(), s_cursorY.load() };
 	}
 
 	int Selected()

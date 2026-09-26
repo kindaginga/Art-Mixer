@@ -226,19 +226,20 @@ namespace RE
 		}
 
 		// override (BSInputEventUser)
+		// These ids resolve to the vtable entries, which are adjustor thunks for the BSInputEventUser base at 0x10; they take that subobject.
 		bool ShouldHandleEvent(const InputEvent* a_event) override  // 01
 		{
-			using func_t = decltype(&IMenu::ShouldHandleEvent);
+			using func_t = bool (*)(BSInputEventUser*, const InputEvent*);
 			REL::Relocation<func_t> func{ REL::ID(1241790, 2287392) };
-			return func(this, a_event);
+			return func(static_cast<BSInputEventUser*>(this), a_event);
 		}
 
 		void HandleEvent(const ButtonEvent* a_event) override  // 08
 		{
 			if (menuObj.IsObject()) {
-				using func_t = decltype(&IMenu::HandleEvent);
+				using func_t = void (*)(BSInputEventUser*, const ButtonEvent*);
 				REL::Relocation<func_t> func{ REL::ID(1414130, 2287393) };
-				return func(this, a_event);
+				return func(static_cast<BSInputEventUser*>(this), a_event);
 			}
 		}
 

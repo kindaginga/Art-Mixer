@@ -75,6 +75,65 @@ namespace GShuf::AutoTest
 			RE::UIMessageQueue::GetSingleton()->AddMessage(RE::MessageBoxMenu::MENU_NAME, RE::UI_MESSAGE_TYPE::kHide);
 		}
 
+		void MouseRelative(int a_dx, int a_dy)
+		{
+			INPUT input{};
+			input.type = INPUT_MOUSE;
+			input.mi.dx = a_dx;
+			input.mi.dy = a_dy;
+			input.mi.dwFlags = MOUSEEVENTF_MOVE;
+			SendInput(1, &input, sizeof(INPUT));
+		}
+
+		// The game moves its own cursor from raw mouse deltas, so the cursor is steered by feedback from the position
+		// the picker menu is given each frame; the target is a stage coordinate scaled to the game window.
+		bool MoveCursorTo(float a_stageX, float a_stageY)
+		{
+			HWND window = FindWindowW(nullptr, L"Fallout4");
+			RECT client{};
+			if (!window || !GetClientRect(window, &client)) {
+				logger::warn("autotest: game window not found");
+				return false;
+			}
+			const float width = static_cast<float>(client.right - client.left);
+			const float height = static_cast<float>(client.bottom - client.top);
+			const int targetX = static_cast<int>(a_stageX * width / 1280.0f);
+			const int targetY = static_cast<int>(a_stageY * height / 720.0f);
+			for (int step = 0; step < 40; ++step) {
+				const auto [x, y] = MainMenu::CursorPos();
+				if (x < 0) {
+					MouseRelative(1, 1);
+					std::this_thread::sleep_for(std::chrono::milliseconds(100));
+					continue;
+				}
+				const int dx = targetX - x;
+				const int dy = targetY - y;
+				if (std::abs(dx) <= 3 && std::abs(dy) <= 3) {
+					logger::info("autotest: cursor at ({}, {}) for stage ({:.0f}, {:.0f}) after {} steps", x, y, a_stageX, a_stageY, step);
+					return true;
+				}
+				MouseRelative(dx / 2, dy / 2);
+				std::this_thread::sleep_for(std::chrono::milliseconds(100));
+			}
+			const auto [x, y] = MainMenu::CursorPos();
+			logger::warn("autotest: cursor stuck at ({}, {}) wanting ({}, {})", x, y, targetX, targetY);
+			return false;
+		}
+
+		void ClickStage(float a_stageX, float a_stageY)
+		{
+			MoveCursorTo(a_stageX, a_stageY);
+			INPUT input[2]{};
+			input[0].type = INPUT_MOUSE;
+			input[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+			input[1].type = INPUT_MOUSE;
+			input[1].mi.dwFlags = MOUSEEVENTF_LEFTUP;
+			SendInput(1, &input[0], sizeof(INPUT));
+			std::this_thread::sleep_for(std::chrono::milliseconds(80));
+			SendInput(1, &input[1], sizeof(INPUT));
+			logger::info("autotest: clicked at stage ({:.0f}, {:.0f})", a_stageX, a_stageY);
+		}
+
 		// Reloads the loaded area through the console and puts the player back where they stood.
 		void ReloadArea(bool a_farFirst)
 		{
@@ -186,9 +245,14 @@ namespace GShuf::AutoTest
 				WaitForMainMenu();
 				std::this_thread::sleep_for(std::chrono::seconds(5));
 				Console("Screenshot");
+				// The first click stands in for "press any button"; then the box (956..1256 x 670..696) and row 0, "Vanilla" (rows stack upward from 618).
+				ClickStage(640.0f, 300.0f);
+				std::this_thread::sleep_for(std::chrono::seconds(3));
+				ClickStage(1106.0f, 683.0f);
 				std::this_thread::sleep_for(std::chrono::seconds(2));
-				RunOnGameThread([] { MainMenu::Select(1); });
-				std::this_thread::sleep_for(std::chrono::seconds(10));
+				Console("Screenshot");
+				ClickStage(1106.0f, 631.0f);
+				std::this_thread::sleep_for(std::chrono::seconds(12));
 				Console("Screenshot");
 				std::this_thread::sleep_for(std::chrono::seconds(3));
 				Console("qqq");

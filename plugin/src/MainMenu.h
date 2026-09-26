@@ -22,6 +22,8 @@ namespace GShuf::MainMenu
 	void SetSkipStartupVideos(bool a_skip);
 	// Leaves the corner picker unregistered when false (autotest baseline without it).
 	void SetPickerEnabled(bool a_enabled);
+	// Last cursor position the picker menu was given by the engine (cursor move events), in the engine's cursor units.
+	[[nodiscard]] std::pair<int, int> CursorPos();
 	[[nodiscard]] int Selected();
 	[[nodiscard]] int OptionCount();
 	// Applies a choice by index and re-shows the main menu so the new video starts.
