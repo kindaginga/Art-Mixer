@@ -10,7 +10,7 @@ namespace GShuf::Engine
 	[[nodiscard]] bool Available();
 	// Installs the TESModelDB::TESProcessor::Process hook that reports every loaded model.
 	bool InstallHooks(ModelLoadedCallback a_callback);
-	// Installs the TESObjectREFR::Set3D hook that reports every reference receiving its 3D.
+	// Installs the TESObjectREFR::Load3D hook that reports every reference's freshly created 3D.
 	bool InstallReferenceHook(Reference3DCallback a_callback);
 	// Loads a material file through the engine and applies it to one geometry, renaming its shader property.
 	// a_invalidate: 0 none, 1 clears the cached render passes, 2 also re-runs SetupGeometry and flags a material update.

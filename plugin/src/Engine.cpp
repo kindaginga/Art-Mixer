@@ -45,16 +45,18 @@ namespace GShuf::Engine
 			}
 		}
 
-		using Set3DFn = void (*)(RE::TESObjectREFR*, RE::NiAVObject*, bool);
-		Set3DFn s_originalSet3D{ nullptr };
 		Reference3DCallback s_referenceCallback{ nullptr };
 
-		void HookedSet3D(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_object, bool a_queue3DTasks)
+		using Load3DFn = RE::NiAVObject* (*)(RE::TESObjectREFR*, bool);
+		Load3DFn s_originalLoad3D{ nullptr };
+
+		RE::NiAVObject* HookedLoad3D(RE::TESObjectREFR* a_ref, bool a_backgroundLoading)
 		{
-			s_originalSet3D(a_ref, a_object, a_queue3DTasks);
-			if (s_referenceCallback && a_ref && a_object) {
-				s_referenceCallback(a_ref, a_object);
+			auto* result = s_originalLoad3D(a_ref, a_backgroundLoading);
+			if (s_referenceCallback && a_ref && result) {
+				s_referenceCallback(a_ref, result);
 			}
+			return result;
 		}
 
 		void Visit(RE::NiAVObject* a_object, int& a_index, const std::function<void(RE::NiAVObject*, int)>& a_visitor)
@@ -101,10 +103,10 @@ namespace GShuf::Engine
 	{
 		s_referenceCallback = a_callback;
 		REL::Relocation<std::uintptr_t> vtable{ RE::VTABLE::TESObjectREFR[0] };
-		s_originalSet3D = reinterpret_cast<Set3DFn>(vtable.write_vfunc(0x88, &HookedSet3D));
+		s_originalLoad3D = reinterpret_cast<Load3DFn>(vtable.write_vfunc(0x86, &HookedLoad3D));
 		const auto base = REL::Module::get().base();
-		logger::info("engine: hooked TESObjectREFR::Set3D (vtable {:X}, original {:X})", vtable.address() - base, reinterpret_cast<std::uintptr_t>(s_originalSet3D) - base);
-		return s_originalSet3D != nullptr;
+		logger::info("engine: hooked TESObjectREFR::Load3D (vtable {:X}, original {:X})", vtable.address() - base, reinterpret_cast<std::uintptr_t>(s_originalLoad3D) - base);
+		return s_originalLoad3D != nullptr;
 	}
 
 	bool IsGeometry(RE::NiAVObject* a_object)

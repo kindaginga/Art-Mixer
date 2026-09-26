@@ -123,13 +123,18 @@ public sealed class Writer
     /// <summary>Generates the MCM pages: one per category with a slider per pack and the derived Vanilla slider.</summary>
     public void WriteMcm(List<PackOutput> packs, int slotsPerCategory)
     {
-        string[] categories = ["paintings", "posters", "signage", "magazines", "quest", "playerhouse"];
-        string[] titles = ["Paintings", "Posters", "Signage", "Magazines", "Quest", "PlayerHouse"];
+        string[] categories = ["paintings", "posters", "signage", "magazines", "quest"];
+        string[] titles = ["Paintings", "Posters", "Signage", "Magazines", "Quest"];
         var pages = new List<object>();
         var settings = new StringBuilder("[Main]\nbBlankCanvases=0\niSeed=1\n");
         for (var c = 0; c < categories.Length; c++)
         {
-            var slots = packs.Where(p => p.Id != "vanilla" && p.Images.Any(i => i.Category == categories[c])).Take(slotsPerCategory).ToList();
+            var eligible = packs.Where(p => p.Id != "vanilla" && p.Images.Any(i => i.Category == categories[c])).ToList();
+            var slots = eligible.Take(slotsPerCategory).ToList();
+            if (eligible.Count > slotsPerCategory)
+            {
+                _report.Warn($"{titles[c]}: {eligible.Count} packs but only {slotsPerCategory} slider slots; without a slider: {string.Join(", ", eligible.Skip(slotsPerCategory).Select(p => p.Name))}. Convert fewer mods or fewer FOMOD sets for this category.");
+            }
             settings.Append($"\n[{titles[c]}]\n");
             for (var s = 1; s <= slotsPerCategory; s++) settings.Append($"iSlot{s}=0\n");
             settings.Append("iVanilla=100\n");

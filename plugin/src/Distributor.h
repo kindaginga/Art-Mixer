@@ -9,6 +9,7 @@ namespace GShuf::Distributor
 		std::size_t modelsSeen{ 0 };
 		std::size_t referencesSeen{ 0 };
 		std::size_t referenceSwaps{ 0 };
+		std::size_t set3DCalls{ 0 };
 	};
 
 	// Registers every catalogued art geometry in the model and applies the current assignment (loader thread).

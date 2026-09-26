@@ -35,6 +35,7 @@ namespace GShuf::Distributor
 		std::atomic<std::size_t> s_referenceSwaps{ 0 };
 		std::atomic<int> s_referenceLogs{ 0 };
 		std::atomic<bool> s_reapplyQueued{ false };
+		std::atomic<std::size_t> s_set3DCalls{ 0 };
 
 		[[nodiscard]] bool IsPrecombined(std::string_view a_model)
 		{
@@ -160,6 +161,7 @@ namespace GShuf::Distributor
 
 	void OnReference3D(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root)
 	{
+		++s_set3DCalls;
 		if (!Engine::Available() || Catalog::Count() == 0 || Packs::All().empty()) return;
 		// Only roots that carry catalogued art are worth a deferred pass; the check itself touches no engine state.
 		bool hasArt = false;
@@ -230,14 +232,17 @@ namespace GShuf::Distributor
 
 	void QueueReapply()
 	{
-		// Several setting changes in a row collapse into one pass on the game thread.
+		// Several setting changes in a row (the MCM script pushes 60 at start) collapse into one pass 300 ms later.
 		if (s_reapplyQueued.exchange(true)) return;
-		F4SE::GetTaskInterface()->AddTask([] { Reapply(); });
+		std::thread([] {
+			std::this_thread::sleep_for(std::chrono::milliseconds(300));
+			F4SE::GetTaskInterface()->AddTask([] { Reapply(); });
+		}).detach();
 	}
 
 	Stats GetStats()
 	{
 		std::scoped_lock lock(s_mutex);
-		return Stats{ s_entries.size(), s_swapped.load(), s_modelsSeen.load(), s_referencesSeen.load(), s_referenceSwaps.load() };
+		return Stats{ s_entries.size(), s_swapped.load(), s_modelsSeen.load(), s_referencesSeen.load(), s_referenceSwaps.load(), s_set3DCalls.load() };
 	}
 }

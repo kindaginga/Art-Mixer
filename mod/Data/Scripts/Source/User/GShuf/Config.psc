@@ -20,13 +20,12 @@ Function Register()
 EndFunction
 
 string[] Function Categories()
-	string[] list = new string[6]
+	string[] list = new string[5]
 	list[0] = "Paintings"
 	list[1] = "Posters"
 	list[2] = "Signage"
 	list[3] = "Magazines"
 	list[4] = "Quest"
-	list[5] = "PlayerHouse"
 	Return list
 EndFunction
 

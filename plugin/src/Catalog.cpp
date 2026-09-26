@@ -49,7 +49,7 @@ namespace GShuf::Catalog
 				slot.category = Settings::NormalizeCategory(Str(row, "category"));
 				slot.width = Int(row, "width");
 				slot.height = Int(row, "height");
-				slot.blank = Settings::Lower(Str(row, "diffuse")).find("paintingcanvas") != std::string::npos;
+				slot.blank = Settings::Lower(Str(row, "diffuse")).find("paintingcanvas") != std::string::npos || slot.material.find("blank") != std::string::npos;
 				if (slot.material.empty() || slot.category.empty()) continue;
 				s_slots[slot.material] = std::move(slot);
 			}

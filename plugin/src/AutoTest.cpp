@@ -105,7 +105,7 @@ namespace GShuf::AutoTest
 		void LogStats(const char* a_stage)
 		{
 			const auto stats = Distributor::GetStats();
-			logger::info("autotest: {}: models seen {}, tracked geometries {}, swaps applied {}, references with art {}, reference swaps {}", a_stage, stats.modelsSeen, stats.tracked, stats.swapped, stats.referencesSeen, stats.referenceSwaps);
+			logger::info("autotest: {}: models seen {}, tracked geometries {}, swaps applied {}, Load3D calls {}, references with art {}, reference swaps {}", a_stage, stats.modelsSeen, stats.tracked, stats.swapped, stats.set3DCalls, stats.referencesSeen, stats.referenceSwaps);
 		}
 	}
 

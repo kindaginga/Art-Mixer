@@ -34,7 +34,7 @@ public sealed class Catalog
                 Normal = Paths.Normalize(row.TryGetProperty("normal", out var n) ? n.GetString() ?? "" : "", "textures"),
                 Width = row.TryGetProperty("width", out var w) ? w.GetInt32() : 0,
                 Height = row.TryGetProperty("height", out var h) ? h.GetInt32() : 0,
-                Blank = (row.GetProperty("diffuse").GetString() ?? "").Contains("paintingcanvas", StringComparison.OrdinalIgnoreCase),
+                Blank = (row.GetProperty("diffuse").GetString() ?? "").Contains("paintingcanvas", StringComparison.OrdinalIgnoreCase) || (row.GetProperty("material").GetString() ?? "").Contains("blank", StringComparison.OrdinalIgnoreCase),
             };
             if (slot.Material.Length == 0) continue;
             catalog.Slots.Add(slot);
