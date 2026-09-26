@@ -7,17 +7,19 @@ public sealed class Report
 {
     private readonly StringBuilder _text = new();
     public int Warnings { get; private set; }
+    /// <summary>Receives every line as it is written (console or window log).</summary>
+    public Action<string>? Sink { get; init; }
 
     public void Info(string message)
     {
-        Console.WriteLine(message);
+        Sink?.Invoke(message);
         _text.AppendLine(message);
     }
 
     public void Warn(string message)
     {
         Warnings++;
-        Console.WriteLine("WARNING: " + message);
+        Sink?.Invoke("WARNING: " + message);
         _text.AppendLine("WARNING: " + message);
     }
 

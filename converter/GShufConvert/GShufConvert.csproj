@@ -1,14 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>GShufConvert</AssemblyName>
+    <AssemblyName>GalleryShuffleConverter</AssemblyName>
     <RootNamespace>GShufConvert</RootNamespace>
     <InvariantGlobalization>true</InvariantGlobalization>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,6 +19,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\external\MaterialLib\MaterialLib.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\mod\Data\GShuf\vanilla-slots.json" Link="vanilla-slots.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

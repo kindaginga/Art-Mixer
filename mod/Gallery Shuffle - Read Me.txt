@@ -20,36 +20,38 @@ INSTALL (both managers)
 -----------------------
 1. Install the requirements above.
 2. Install "Gallery Shuffle" with your mod manager like any other mod (it is a FOMOD, click through it).
-   Make sure GalleryShuffle.esl is enabled in your plugin list.
+   Make sure GalleryShuffle.esl is enabled in your plugin list. The converter is inside the mod at
+   Tools\GalleryShuffle\GalleryShuffleConverter.exe.
 3. Download the art mods you want to use. Do NOT install them; keep the archives.
    Replacers (mods that overwrite vanilla paintings or posters) and standalone art mods both work.
-4. Unpack "Gallery Shuffle Converter" anywhere, for example C:\Games\GShufConvert.
-5. Run the converter once (see CONVERT below). It creates a mod folder named "Gallery Shuffle Packs".
-6. Enable "Gallery Shuffle Packs" in your mod manager and put it AFTER (below) Gallery Shuffle so its
-   menu files win. In Vortex, install the folder as a mod ("Install From File" on the zipped folder) and
-   let it override Gallery Shuffle if asked.
-7. Start the game. Open MCM, Gallery Shuffle, and set the share of each pack per category.
+4. Open the converter (see CONVERT below), drop the archives in, press Convert.
+5. Mod Organizer 2: press F5, enable the new "Gallery Shuffle Packs" mod and put it BELOW Gallery Shuffle.
+   Vortex: open Downloads, install "Gallery Shuffle Packs.zip", enable it, let it override Gallery Shuffle.
+6. Start the game. Open MCM, Gallery Shuffle, and set the share of each pack per category.
    The shares in a category add up to 100; the remainder is shown as "Vanilla".
    Changes show the next time an area loads (fast travel, going through a door, or loading a save).
 
 
 CONVERT
 -------
-Open a command prompt in the converter folder and run:
+Start GalleryShuffleConverter.exe. The quickest way is to add it as a tool in your manager once:
+  Mod Organizer 2: the executables list (the gears icon), Add, browse to
+    <your instance>\mods\Gallery Shuffle\Tools\GalleryShuffle\GalleryShuffleConverter.exe
+  Vortex: Dashboard, Add tool, browse to Data\Tools\GalleryShuffle\GalleryShuffleConverter.exe in your
+    game folder after deployment.
+You can also double-click the exe directly.
 
-  GShufConvert --game "D:\Steam\steamapps\common\Fallout 4" --out "<your mods folder>\Gallery Shuffle Packs" "C:\Downloads\Atom Bomb Pinups.rar" "C:\Downloads\Lore Friendly Posters.7z"
+The window finds your Mod Organizer 2 instances and Vortex by itself:
+  Deliver packs to   pick the instance (or Vortex, or a folder of your choice). When you start the
+                     converter from inside a manager it preselects that manager.
+  Fallout 4 folder   filled from the instance; the vanilla pictures come out of your own game archives.
+  Art mods           drop archives (.zip, .7z, .rar) or unpacked mod folders into the list, or use the
+                     buttons. Every run rebuilds all packs, so list every art mod each time.
+  Convert            writes the "Gallery Shuffle Packs" mod (or, for Vortex, a zip in its downloads).
 
-  --game   your Fallout 4 folder (the one with Fallout4.exe). The converter copies the vanilla pictures
-           out of your own archives so "Vanilla" is always the untouched art.
-  --out    where to write the "Gallery Shuffle Packs" mod. For Mod Organizer 2 this is a new folder inside
-           your instance's "mods" folder. For Vortex use any folder, then zip it and install the zip.
-  then     any number of art mods: archives (.zip, .7z, .rar), unpacked folders, FOMOD archives.
-           Each mod becomes one pack; a FOMOD's option sets are pooled into it, so alternative versions
-           of the same picture are shuffled too. Add --split-options to get one pack per option instead.
-
-Run it again whenever you add or remove art mods; it rebuilds the packs and the MCM pages.
-The file GShuf\convert-report.txt in the output lists what was found in each mod.
-
+Each mod becomes one pack. A FOMOD's option sets are pooled into it, so alternative versions of the same
+picture are shuffled too; tick "One pack per FOMOD option" to keep them apart instead.
+The log in the window and GShuf\convert-report.txt in the output list what was found in each mod.
 Each category page has 10 pack slots; the report names any pack that got no slider.
 
 What the converter recognizes:
@@ -58,6 +60,8 @@ What the converter recognizes:
   - Standalone art mods: every material with its own picture texture. The category (paintings, posters,
     signage, magazines) comes from the file names, otherwise from the picture's shape.
   - A gshuf-pack.json in the mod (optional) listing pictures and categories explicitly.
+
+Command line (for scripts): GalleryShuffleConverter --game "<Fallout 4 folder>" --out "<mods folder>\Gallery Shuffle Packs" <archives...>
 
 
 MENU

@@ -25,9 +25,11 @@ if (-not $SkipBuild) {
     Pop-Location
 }
 
-# Core mod (FOMOD)
+# Core mod (FOMOD), with the converter inside as a tool (Tools\GalleryShuffle) so managers can launch it.
 $core = Join-Path $stage "core"
-New-Item -ItemType Directory -Force (Join-Path $core "Data\F4SE\Plugins"), (Join-Path $core "fomod") | Out-Null
+New-Item -ItemType Directory -Force (Join-Path $core "Data\F4SE\Plugins"), (Join-Path $core "fomod"), (Join-Path $core "Data\Tools\GalleryShuffle") | Out-Null
+Copy-Item (Join-Path $stage "converter\*") (Join-Path $core "Data\Tools\GalleryShuffle\") -Recurse
+Get-ChildItem (Join-Path $core "Data\Tools\GalleryShuffle") -Filter "*.pdb" | Remove-Item
 Copy-Item (Join-Path $root "plugin\build\vs2026\Release\GalleryShuffle.dll") (Join-Path $core "Data\F4SE\Plugins\")
 Copy-Item (Join-Path $root "mod\Data\GalleryShuffle.esl") (Join-Path $core "Data\")
 Copy-Item (Join-Path $root "mod\Data\Scripts") (Join-Path $core "Data\Scripts") -Recurse
