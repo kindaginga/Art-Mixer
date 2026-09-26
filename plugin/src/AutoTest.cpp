@@ -171,10 +171,10 @@ namespace GShuf::AutoTest
 		}).detach();
 	}
 
-	// Waits until the intro videos are over and the real main menu is up, at most two minutes.
+	// Waits until the startup videos are over and the real main menu is up; a S.P.E.C.I.A.L. clip at startup runs 161 s.
 	void WaitForMainMenu()
 	{
-		for (int i = 0; i < 1200 && !MainMenu::AtMainMenu(); ++i) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		for (int i = 0; i < 2000 && !MainMenu::AtMainMenu(); ++i) std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		logger::info("autotest: at main menu {}", MainMenu::AtMainMenu());
 	}
 
