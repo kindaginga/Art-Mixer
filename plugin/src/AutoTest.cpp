@@ -137,6 +137,7 @@ namespace GShuf::AutoTest
 			if (key.find("smode") != std::string::npos) s_mode = Settings::Lower(value);
 			if (key.find("smenuvideo") != std::string::npos) s_menuVideo = value;
 		}
+		if (s_enabled) MainMenu::SetSkipStartupVideos(true);
 		if (s_enabled && s_mode == "mainmenu") {
 			logger::info("autotest: main menu mode, video '{}'", s_menuVideo);
 			if (!s_menuVideo.empty()) MainMenu::SetOptions({ { "Vanilla", "" }, { "Test video", s_menuVideo } }, 0);
@@ -162,12 +163,20 @@ namespace GShuf::AutoTest
 		}).detach();
 	}
 
+	// Waits until the intro videos are over and the real main menu is up, at most two minutes.
+	void WaitForMainMenu()
+	{
+		for (int i = 0; i < 1200 && !MainMenu::AtMainMenu(); ++i) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		logger::info("autotest: at main menu {}", MainMenu::AtMainMenu());
+	}
+
 	void OnGameDataReady()
 	{
 		if (!s_enabled || s_loadIssued.exchange(true)) return;
 		if (s_mode == "mainmenu") {
 			std::thread([] {
-				std::this_thread::sleep_for(std::chrono::seconds(20));
+				WaitForMainMenu();
+				std::this_thread::sleep_for(std::chrono::seconds(5));
 				Console("Screenshot");
 				std::this_thread::sleep_for(std::chrono::seconds(2));
 				RunOnGameThread([] { MainMenu::Select(1); });
@@ -179,9 +188,10 @@ namespace GShuf::AutoTest
 			return;
 		}
 		RunOnGameThread(Heartbeat);
-		logger::info("autotest: game data ready; loading '{}' in 12 s", s_save);
+		logger::info("autotest: game data ready; loading '{}' once the main menu is up", s_save);
 		std::thread([] {
-			std::this_thread::sleep_for(std::chrono::seconds(20));
+			WaitForMainMenu();
+			std::this_thread::sleep_for(std::chrono::seconds(3));
 			Console("load " + s_save);
 			for (int i = 0; i < 40 && !s_confirmed.load() && !s_finishIssued.load(); ++i) {
 				std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -193,11 +203,29 @@ namespace GShuf::AutoTest
 	void OnPostLoadGame()
 	{
 		if (!s_enabled || s_finishIssued.exchange(true)) return;
-		logger::info("autotest: post load game; screenshot A in 10 s, refresh, screenshot B, slot 1 to 0, screenshot C, then quit");
+		logger::info("autotest: post load game; screenshot A in 10 s, third-person screenshot P, refresh, screenshot B, slot 1 to 0, screenshot C, then quit");
 		std::thread([] {
 			std::this_thread::sleep_for(std::chrono::seconds(10));
 			LogStats("A (initial)");
 			Console("Screenshot");
+			// Third person with the camera detached and the player turned to face it shows the Pip-Boy on the left forearm.
+			auto heading = std::make_shared<float>(0.0f);
+			RunOnGameThread([heading] { if (auto* player = RE::PlayerCharacter::GetSingleton(); player) *heading = player->data.angle.z * 57.29578f; });
+			std::this_thread::sleep_for(std::chrono::seconds(1));
+			Console("cgf \"Game.ForceThirdPerson\"");
+			std::this_thread::sleep_for(std::chrono::seconds(3));
+			Console("tfc");
+			std::this_thread::sleep_for(std::chrono::seconds(1));
+			Console(fmt::format("player.setangle z {:.1f}", std::fmod(*heading + 180.0f, 360.0f)));
+			Console("player.setangle x 0");
+			std::this_thread::sleep_for(std::chrono::seconds(3));
+			LogStats("P (third person, facing the camera)");
+			Console("Screenshot");
+			std::this_thread::sleep_for(std::chrono::seconds(2));
+			Console("tfc");
+			Console(fmt::format("player.setangle z {:.1f}", *heading));
+			Console("cgf \"Game.ForceFirstPerson\"");
+			std::this_thread::sleep_for(std::chrono::seconds(3));
 			Console("player.placeatme 249ED7 1");
 			Console("player.placeatme 249ED7 1");
 			std::this_thread::sleep_for(std::chrono::seconds(4));

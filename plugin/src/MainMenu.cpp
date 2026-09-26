@@ -18,7 +18,11 @@ namespace GShuf::MainMenu
 		std::vector<Option> s_options;
 		int s_selected{ 0 };
 		std::atomic<int> s_opens{ 0 };
+		std::atomic<bool> s_loopOpen{ false };    // the menu loop video has been opened: the intro is over and the real menu is up
+		std::atomic<bool> s_registered{ false };  // the picker menu is registered with the UI
+		std::atomic<bool> s_skipStartup{ false };  // autotest: startup videos are refused so the menu comes up at once
 		constexpr auto kPickerMenu = "GShufPicker"sv;
+		void ShowPicker(bool a_show);
 		std::vector<std::string> s_optionIds;
 
 		// The chosen pack id lives in the plugin's own state file, since the main menu runs no Papyrus.
@@ -66,10 +70,22 @@ namespace GShuf::MainMenu
 				redirect = s_menuVideo;
 			}
 			if (s_opens.fetch_add(1) < 20) logger::info("mainmenu: BinkOpen('{}', {:#x}){}", name, a_flags, redirect.empty() ? "" : " -> " + redirect);
+			if (s_skipStartup.load() && !lowered.ends_with("mainmenuloop.bk2")) {
+				logger::info("mainmenu: startup video '{}' skipped for the autotest", name);
+				return nullptr;
+			}
 			auto* result = s_originalBinkOpen(redirect.empty() ? a_name : redirect.c_str(), a_flags);
 			if (!result && !redirect.empty()) {
 				logger::warn("mainmenu: '{}' failed to open, falling back to '{}'", redirect, name);
 				result = s_originalBinkOpen(a_name, a_flags);
+			}
+			if (lowered.ends_with("mainmenuloop.bk2")) {
+				// The loop starts when the intro videos are done, so the picker appears over the real menu only.
+				s_loopOpen.store(true);
+				F4SE::GetTaskInterface()->AddTask([] {
+					auto* ui = RE::UI::GetSingleton();
+					if (s_registered.load() && ui && ui->GetMenuOpen("MainMenu")) ShowPicker(true);
+				});
 			}
 			return result;
 		}
@@ -175,7 +191,12 @@ namespace GShuf::MainMenu
 				const auto name = a_event.menuName.c_str() ? a_event.menuName.c_str() : "";
 				if (std::string_view(name) == "MainMenu") {
 					logger::info("mainmenu: MainMenu {}", a_event.opening ? "opened" : "closed");
-					ShowPicker(a_event.opening);
+					if (a_event.opening) {
+						if (s_loopOpen.load()) ShowPicker(true);
+					} else {
+						s_loopOpen.store(false);
+						ShowPicker(false);
+					}
 				}
 				return RE::BSEventNotifyControl::kContinue;
 			}
@@ -204,9 +225,21 @@ namespace GShuf::MainMenu
 		}
 		ui->RegisterSink<RE::MenuOpenCloseEvent>(&s_sink);
 		ui->RegisterMenu(kPickerMenu.data(), &PickerMenu::Create);
+		s_registered.store(true);
 		const bool mainOpen = ui->GetMenuOpen("MainMenu");
-		logger::info("mainmenu: picker menu registered; MainMenu already open {}", mainOpen);
-		if (mainOpen) ShowPicker(true);
+		logger::info("mainmenu: picker menu registered; MainMenu already open {}, loop video open {}", mainOpen, s_loopOpen.load());
+		if (mainOpen && s_loopOpen.load()) ShowPicker(true);
+	}
+
+	void SetSkipStartupVideos(bool a_skip)
+	{
+		s_skipStartup.store(a_skip);
+	}
+
+	bool AtMainMenu()
+	{
+		auto* ui = RE::UI::GetSingleton();
+		return s_loopOpen.load() && ui && ui->GetMenuOpen("MainMenu");
 	}
 
 	void SetOptions(std::vector<Option> a_options, int a_selected)

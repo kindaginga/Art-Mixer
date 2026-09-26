@@ -16,6 +16,10 @@ namespace GShuf::MainMenu
 	void SetOptions(std::vector<Option> a_options, int a_selected);
 	// Builds the option list from the installed packs and restores the saved choice.
 	void LoadFromPacks();
+	// True once the intro videos are over and the main menu is showing its loop video.
+	[[nodiscard]] bool AtMainMenu();
+	// Refuses every video except the menu loop, so an automated run reaches the menu without the intro.
+	void SetSkipStartupVideos(bool a_skip);
 	[[nodiscard]] int Selected();
 	[[nodiscard]] int OptionCount();
 	// Applies a choice by index and re-shows the main menu so the new video starts.
