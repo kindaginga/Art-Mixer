@@ -34,6 +34,7 @@ namespace GShuf::Distributor
 		std::atomic<std::size_t> s_referencesSeen{ 0 };
 		std::atomic<std::size_t> s_referenceSwaps{ 0 };
 		std::atomic<int> s_referenceLogs{ 0 };
+		std::atomic<bool> s_reapplyQueued{ false };
 
 		[[nodiscard]] bool IsPrecombined(std::string_view a_model)
 		{
@@ -159,9 +160,22 @@ namespace GShuf::Distributor
 
 	void OnReference3D(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root)
 	{
-		if (!Engine::Available() || Catalog::Count() == 0) return;
+		if (!Engine::Available() || Catalog::Count() == 0 || Packs::All().empty()) return;
+		// Only roots that carry catalogued art are worth a deferred pass; the check itself touches no engine state.
+		bool hasArt = false;
+		Engine::ForEachGeometry(a_root, [&](RE::NiAVObject* a_geometry, int) {
+			if (!hasArt && Catalog::Find(Engine::ShaderPropertyName(a_geometry))) hasArt = true;
+		});
+		if (!hasArt) return;
+		RE::NiPointer<RE::NiAVObject> root{ a_root };
+		const auto formID = a_ref->GetFormID();
+		F4SE::GetTaskInterface()->AddTask([root, formID] { ApplyToReference(formID, root.get()); });
+	}
+
+	void ApplyToReference(std::uint32_t a_formID, RE::NiAVObject* a_root)
+	{
 		const auto values = Settings::Get();
-		const auto identity = fmt::format("ref:{:08X}", a_ref->GetFormID());
+		const auto identity = fmt::format("ref:{:08X}", a_formID);
 		bool seen = false;
 		Engine::ForEachGeometry(a_root, [&](RE::NiAVObject* a_geometry, int) {
 			const auto name = Engine::ShaderPropertyName(a_geometry);
@@ -173,14 +187,14 @@ namespace GShuf::Distributor
 			seen = true;
 			if (ours) {
 				// The clone arrived already carrying a pack material: its shader property is shared with another clone.
-				if (s_referenceLogs.load() < 20) { ++s_referenceLogs; logger::info("reference {:08X}: geometry already carries {} (shared property)", a_ref->GetFormID(), name); }
+				if (s_referenceLogs.load() < 20) { ++s_referenceLogs; logger::info("reference {:08X}: geometry already carries {} (shared property)", a_formID, name); }
 				return;
 			}
 			const auto wanted = ChooseFor(*slot, identity, values);
 			if (wanted.empty()) return;
 			if (Engine::ApplyMaterial(a_geometry, wanted)) {
 				++s_referenceSwaps;
-				if (s_referenceLogs.load() < 20) { ++s_referenceLogs; logger::info("reference {:08X}: {} -> {}", a_ref->GetFormID(), name, wanted); }
+				if (s_referenceLogs.load() < 20) { ++s_referenceLogs; logger::info("reference {:08X}: {} -> {}", a_formID, name, wanted); }
 			}
 		});
 		if (seen) ++s_referencesSeen;
@@ -188,20 +202,36 @@ namespace GShuf::Distributor
 
 	void Reapply()
 	{
+		s_reapplyQueued.store(false);
 		const auto values = Settings::Get();
-		std::scoped_lock lock(s_mutex);
-		Prune();
+		std::vector<Entry> work;
+		{
+			std::scoped_lock lock(s_mutex);
+			Prune();
+			work = s_entries;
+		}
+		// Engine calls happen without the registry lock: the loader thread takes that lock after its own material loads.
 		std::size_t changed = 0;
-		for (auto& entry : s_entries) {
+		for (auto& entry : work) {
 			const auto before = entry.currentMaterial;
 			Apply(entry, values);
 			if (entry.currentMaterial != before) ++changed;
 		}
-		logger::info("distributor: reapplied with seed {}: {} tracked geometries, {} changed", values.seed, s_entries.size(), changed);
+		{
+			std::scoped_lock lock(s_mutex);
+			for (auto& entry : s_entries) {
+				for (const auto& done : work) {
+					if (done.geometry.get() == entry.geometry.get()) { entry.currentMaterial = done.currentMaterial; break; }
+				}
+			}
+		}
+		logger::info("distributor: reapplied with seed {}: {} tracked geometries, {} changed", values.seed, work.size(), changed);
 	}
 
 	void QueueReapply()
 	{
+		// Several setting changes in a row collapse into one pass on the game thread.
+		if (s_reapplyQueued.exchange(true)) return;
 		F4SE::GetTaskInterface()->AddTask([] { Reapply(); });
 	}
 

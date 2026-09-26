@@ -15,6 +15,8 @@ namespace GShuf::Distributor
 	void OnModelLoaded(const char* a_modelPath, RE::NiAVObject* a_root);
 	// Applies a per-reference pick to catalogued geometries in a reference's freshly attached 3D (game thread).
 	void OnReference3D(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root);
+	// Applies the per-reference pick to an attached 3D root; runs on the game thread as a task.
+	void ApplyToReference(std::uint32_t a_formID, RE::NiAVObject* a_root);
 	// Re-evaluates every tracked geometry against the current settings; runs on the game thread.
 	void Reapply();
 	// Queues Reapply on the game thread.

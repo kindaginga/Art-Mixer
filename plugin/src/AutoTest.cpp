@@ -1,6 +1,7 @@
 #include "AutoTest.h"
 
 #include "Distributor.h"
+#include "Engine.h"
 #include "Settings.h"
 
 #include <cmath>
@@ -133,15 +134,28 @@ namespace GShuf::AutoTest
 		}
 		if (s_enabled && !s_save.empty()) {
 			logger::info("autotest: enabled, will load '{}'", s_save);
+			Engine::SetTracing(true);
 			return true;
 		}
 		s_enabled = false;
 		return false;
 	}
 
+	// Re-queues itself every second so the log shows when the game thread stops running tasks.
+	void Heartbeat()
+	{
+		static int s_ticks = 0;
+		if (++s_ticks % 5 == 0) logger::info("autotest: game thread heartbeat {} (thread {})", s_ticks, GetCurrentThreadId());
+		std::thread([] {
+			std::this_thread::sleep_for(std::chrono::seconds(1));
+			RunOnGameThread(Heartbeat);
+		}).detach();
+	}
+
 	void OnGameDataReady()
 	{
 		if (!s_enabled || s_loadIssued.exchange(true)) return;
+		RunOnGameThread(Heartbeat);
 		logger::info("autotest: game data ready; loading '{}' in 12 s", s_save);
 		std::thread([] {
 			std::this_thread::sleep_for(std::chrono::seconds(20));

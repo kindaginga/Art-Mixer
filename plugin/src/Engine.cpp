@@ -2,6 +2,10 @@
 
 #include "Settings.h"
 
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+
 namespace GShuf::Engine
 {
 	namespace
@@ -26,6 +30,8 @@ namespace GShuf::Engine
 		}
 
 		std::optional<MaterialFunctions> s_functions;
+		std::atomic<bool> s_tracing{ false };
+		std::atomic<int> s_traceCount{ 0 };
 
 		using ProcessFn = void (*)(void*, void*, const char*, RE::NiAVObject**, std::uint32_t*);
 		ProcessFn s_originalProcess{ nullptr };
@@ -153,9 +159,12 @@ namespace GShuf::Engine
 		if (Settings::Lower(file).starts_with("data\\")) file.erase(0, 5);
 		const auto diffuseBefore = DiffuseName(a_geometry);
 
+		const bool trace = s_tracing.load() && s_traceCount.fetch_add(1) < 2000;
+		if (trace) logger::info("engine: [thread {}] loading {}", GetCurrentThreadId(), file);
 		alignas(16) std::uint8_t shaderData[0x1E0]{};
 		ctor(shaderData);
 		const auto status = loadMaterialFile(file.c_str(), shaderData, 0);
+		if (trace) logger::info("engine: [thread {}] loaded {} status {}", GetCurrentThreadId(), file, status);
 		bool ok = false;
 		if (status == 0) {
 			applyMaterialData(shaderData, a_geometry, false);
@@ -190,5 +199,10 @@ namespace GShuf::Engine
 	{
 		int index = 0;
 		Visit(a_root, index, a_visitor);
+	}
+
+	void SetTracing(bool a_enabled)
+	{
+		s_tracing.store(a_enabled);
 	}
 }

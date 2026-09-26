@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using GShufConvert;
 
 const int slotsPerCategory = 10;
@@ -63,8 +64,8 @@ foreach (var input in inputs)
     var emitted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     foreach (var source in Sources.Load(input, temp, report))
     {
-        // A picture that an earlier option group of the same mod already provides is not repeated in later groups.
-        var images = Scanner.Scan(source, catalog, report).Where(i => emitted.Add(i.Diffuse + "|" + (i.Slot ?? ""))).ToList();
+        // A picture that an earlier option group of the same mod already provides (same bytes) is not repeated in later groups.
+        var images = Scanner.Scan(source, catalog, report).Where(i => emitted.Add(Convert.ToHexString(SHA1.HashData(source.Files[i.Diffuse].Read())) + "|" + (i.Slot ?? ""))).ToList();
         if (images.Count == 0)
         {
             report.Info($"{source.Name}: no art found (no vanilla-path textures, no materials with textures, no gshuf-pack.json); skipped");

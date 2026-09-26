@@ -22,4 +22,6 @@ namespace GShuf::Engine
 	// Visits every geometry under the root in traversal order with a stable index.
 	void ForEachGeometry(RE::NiAVObject* a_root, const std::function<void(RE::NiAVObject*, int)>& a_visitor);
 	[[nodiscard]] bool IsGeometry(RE::NiAVObject* a_object);
+	// Logs every material application with its thread id (diagnostic, enabled by the autotest).
+	void SetTracing(bool a_enabled);
 }

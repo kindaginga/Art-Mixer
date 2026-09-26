@@ -62,7 +62,7 @@ public sealed class Ba2Archive
                 var width = reader.ReadUInt16();
                 var mips = reader.ReadByte();
                 var format = reader.ReadByte();
-                var flags = reader.ReadUInt16();
+                var flags = reader.ReadUInt16(); // low byte: cube map, high byte: tile mode
                 var chunks = new List<Chunk>(chunkCount);
                 for (var c = 0; c < chunkCount; c++)
                 {
@@ -124,7 +124,10 @@ public sealed class Ba2Archive
                     var data = chunk.PackedSize > 0 ? Inflate(raw, chunk.UnpackedSize) : raw;
                     pixels.Write(data);
                 }
-                return Dds.Build(t.Width, t.Height, t.Mips, t.Format, (t.Flags & 0x800) != 0, pixels.ToArray());
+                var dds = Dds.Build(t.Width, t.Height, t.Mips, t.Format, (t.Flags & 0xFF) != 0, pixels.ToArray());
+                var expected = Dds.ExpectedDataSize(dds);
+                if (expected != dds.Length - 148) throw new InvalidDataException($"{path}: rebuilt DDS holds {dds.Length - 148} bytes, header expects {expected}");
+                return dds;
             }
             default:
                 throw new InvalidOperationException();
@@ -184,6 +187,22 @@ public static class Dds
         var height = (int)BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(12));
         var width = (int)BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(16));
         return (width, height);
+    }
+
+    /// <summary>Pixel bytes a DDS with a DX10 header should carry according to its own header.</summary>
+    public static int ExpectedDataSize(ReadOnlySpan<byte> dds)
+    {
+        var height = (int)BinaryPrimitives.ReadUInt32LittleEndian(dds.Slice(12));
+        var width = (int)BinaryPrimitives.ReadUInt32LittleEndian(dds.Slice(16));
+        var mips = Math.Max(1, (int)BinaryPrimitives.ReadUInt32LittleEndian(dds.Slice(28)));
+        var format = (byte)BinaryPrimitives.ReadUInt32LittleEndian(dds.Slice(128));
+        var faces = (BinaryPrimitives.ReadUInt32LittleEndian(dds.Slice(136)) & 0x4) != 0 ? 6 : 1;
+        var total = 0;
+        for (int m = 0, w = width, h = height; m < mips; m++, w = Math.Max(1, w / 2), h = Math.Max(1, h / 2))
+        {
+            total += IsBlockCompressed(format) ? MipSize(w, h, format) : w * h * BytesPerPixel(format);
+        }
+        return total * faces;
     }
 
     private static bool IsBlockCompressed(byte format) => format is >= 70 and <= 84 or >= 94 and <= 99;
