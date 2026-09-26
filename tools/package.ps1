@@ -7,7 +7,9 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 $dist = Join-Path $root "dist"
 $stage = Join-Path $dist "stage"
-if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+$core = Join-Path $stage "core"
+if (-not $SkipBuild -and (Test-Path $stage)) { Remove-Item $stage -Recurse -Force }
+if (Test-Path $core) { Remove-Item $core -Recurse -Force }
 New-Item -ItemType Directory -Force $dist, $stage | Out-Null
 
 if (-not $SkipBuild) {
@@ -26,7 +28,6 @@ if (-not $SkipBuild) {
 }
 
 # Core mod (FOMOD), with the converter inside as a tool (Tools\GalleryShuffle) so managers can launch it.
-$core = Join-Path $stage "core"
 New-Item -ItemType Directory -Force (Join-Path $core "Data\F4SE\Plugins"), (Join-Path $core "fomod"), (Join-Path $core "Data\Tools\GalleryShuffle") | Out-Null
 Copy-Item (Join-Path $stage "converter\*") (Join-Path $core "Data\Tools\GalleryShuffle\") -Recurse
 Get-ChildItem (Join-Path $core "Data\Tools\GalleryShuffle") -Filter "*.pdb" | Remove-Item
@@ -35,6 +36,7 @@ Copy-Item (Join-Path $root "mod\Data\GalleryShuffle.esl") (Join-Path $core "Data
 Copy-Item (Join-Path $root "mod\Data\Scripts") (Join-Path $core "Data\Scripts") -Recurse
 Copy-Item (Join-Path $root "mod\Data\MCM") (Join-Path $core "Data\MCM") -Recurse
 Copy-Item (Join-Path $root "mod\Data\GShuf") (Join-Path $core "Data\GShuf") -Recurse
+Copy-Item (Join-Path $root "mod\Data\Interface") (Join-Path $core "Data\Interface") -Recurse
 Copy-Item (Join-Path $root "mod\fomod\*") (Join-Path $core "fomod\")
 Copy-Item (Join-Path $root "mod\Gallery Shuffle - Read Me.txt") $core
 $coreZip = Join-Path $dist "GalleryShuffle-$Version.zip"
