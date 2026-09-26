@@ -55,6 +55,12 @@ The log in the window and GShuf\convert-report.txt in the output list what was f
 Each category page has 10 pack slots; the report names any pack that got no slider.
 
 What the converter recognizes:
+  - Main menu replacers: Video\MainMenuLoop.bk2 (still or animated). Each such mod becomes a choice in the
+    "Main menu art" list, both in the MCM and in the small list in the bottom-right corner of the main menu.
+    Picking one restarts the main menu with that video; the choice is kept in GShuf\state.json.
+  - Pip-Boy replacers: the screen background (textures\AnimObjects\Pipboy\PipBoyScreen_d.dds) and the
+    device skin (PipBoy01_d, PipBoy02_d, PipBoyLabels01_d, PipBoyInterior01_d, PipBoyGlow01_d) get their own
+    "Pip-Boy screen" and "Pip-Boy skin" pages.
   - Textures at vanilla art paths (replacer mods): each picture is tied to the vanilla frame it replaces.
   - Materials (.bgsm) at vanilla art paths that point at new textures.
   - Standalone art mods: every material with its own picture texture. The category (paintings, posters,
@@ -69,7 +75,11 @@ MENU
   Category pages   one slider per pack (its share in percent) and the derived "Vanilla (remainder)".
                    A slider stops at whatever is left; the shares never exceed 100.
   Put art on blank canvases   also fills the empty canvases and frames the game places.
+  Main menu art    which pack's main menu video plays (also in the corner of the main menu itself).
   Shuffle layout   picks a new arrangement with the same shares.
+  Reset all settings   every share back to 0 (all vanilla), blank canvases off, seed and main menu reset.
+  When the converter is run again and the pack set changed, all shares reset by themselves and a message
+  says so, since slot numbers may now point at different packs.
 
 
 NOTES
