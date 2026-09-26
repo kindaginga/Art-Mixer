@@ -1,0 +1,8 @@
+build/
+out/
+dist/
+.vs/
+*.user
+converter/**/bin/
+converter/**/obj/
+CMakeUserPresets.json
