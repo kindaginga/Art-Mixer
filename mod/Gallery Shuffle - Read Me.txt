@@ -1,0 +1,73 @@
+GALLERY SHUFFLE
+===============
+
+Gallery Shuffle lets you install several art mods at once (paintings, posters, signs, magazines) and
+spread their pictures across the Commonwealth by the shares you choose. Set "Atom Bomb Pinups 40%,
+Lore Friendly Posters 30%" and the rest stays vanilla. Every picture frame gets its own pick.
+
+Works with Fallout 4 versions 1.10.163 (old-gen), 1.10.984 (next-gen), 1.11.169 and 1.11.240 with the
+same files. Works with Mod Organizer 2 and Vortex.
+
+
+REQUIREMENTS
+------------
+1. F4SE for your game version (f4se.silverlock.org).
+2. Mod Configuration Menu (Nexus 21497), any version from 1.39 on.
+3. Runtime Database (Nexus 108394). The plugin uses it to run on every game version.
+
+
+INSTALL (both managers)
+-----------------------
+1. Install the requirements above.
+2. Install "Gallery Shuffle" with your mod manager like any other mod (it is a FOMOD, click through it).
+   Make sure GalleryShuffle.esl is enabled in your plugin list.
+3. Download the art mods you want to use. Do NOT install them; keep the archives.
+   Replacers (mods that overwrite vanilla paintings or posters) and standalone art mods both work.
+4. Unpack "Gallery Shuffle Converter" anywhere, for example C:\Games\GShufConvert.
+5. Run the converter once (see CONVERT below). It creates a mod folder named "Gallery Shuffle Packs".
+6. Enable "Gallery Shuffle Packs" in your mod manager and put it AFTER (below) Gallery Shuffle so its
+   menu files win. In Vortex, install the folder as a mod ("Install From File" on the zipped folder) and
+   let it override Gallery Shuffle if asked.
+7. Start the game. Open MCM, Gallery Shuffle, and set the share of each pack per category.
+   The shares in a category add up to 100; the remainder is shown as "Vanilla".
+   Changes show the next time an area loads (fast travel, going through a door, or loading a save).
+
+
+CONVERT
+-------
+Open a command prompt in the converter folder and run:
+
+  GShufConvert --game "D:\Steam\steamapps\common\Fallout 4" --out "<your mods folder>\Gallery Shuffle Packs" "C:\Downloads\Atom Bomb Pinups.rar" "C:\Downloads\Lore Friendly Posters.7z"
+
+  --game   your Fallout 4 folder (the one with Fallout4.exe). The converter copies the vanilla pictures
+           out of your own archives so "Vanilla" is always the untouched art.
+  --out    where to write the "Gallery Shuffle Packs" mod. For Mod Organizer 2 this is a new folder inside
+           your instance's "mods" folder. For Vortex use any folder, then zip it and install the zip.
+  then     any number of art mods: archives (.zip, .7z, .rar), unpacked folders, FOMOD archives.
+           A FOMOD with several options becomes one pack per option.
+
+Run it again whenever you add or remove art mods; it rebuilds the packs and the MCM pages.
+The file GShuf\convert-report.txt in the output lists what was found in each mod.
+
+What the converter recognizes:
+  - Textures at vanilla art paths (replacer mods): each picture is tied to the vanilla frame it replaces.
+  - Materials (.bgsm) at vanilla art paths that point at new textures.
+  - Standalone art mods: every material with its own picture texture. The category (paintings, posters,
+    signage, magazines) comes from the file names, otherwise from the picture's shape.
+  - A gshuf-pack.json in the mod (optional) listing pictures and categories explicitly.
+
+
+MENU
+----
+  Category pages   one slider per pack (its share in percent) and the derived "Vanilla (remainder)".
+                   A slider stops at whatever is left; the shares never exceed 100.
+  Put art on blank canvases   also fills the empty canvases and frames the game places.
+  Shuffle layout   picks a new arrangement with the same shares.
+
+
+NOTES
+-----
+  - Pictures inside precombined meshes (almost all placed art) are drawn from data the game builds when
+    an area loads, so a changed share or a shuffle appears at the next area load, not instantly.
+  - Uninstall: disable both mods. Nothing is baked into saves.
+  - Log file: Documents\My Games\Fallout4\F4SE\GalleryShuffle.log.

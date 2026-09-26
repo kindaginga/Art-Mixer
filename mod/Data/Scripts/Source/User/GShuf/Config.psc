@@ -15,6 +15,7 @@ EndEvent
 Function Register()
 	RegisterForExternalEvent("OnMCMSettingChange|" + ModName, "OnMCMSettingChange")
 	RegisterForExternalEvent("OnMCMMenuOpen|" + ModName, "OnMCMMenuOpen")
+	Debug.Trace("GShuf: Config registered; plugin ready " + GShuf.IsReady() + ", plugin version " + GShuf.GetVersion())
 	PushAll()
 EndFunction
 
@@ -60,6 +61,7 @@ Function PushAll()
 	EndWhile
 	GShuf.SetBlankCanvases(MCM.GetModSettingBool(ModName, "bBlankCanvases:Main"))
 	GShuf.SetSeed(MCM.GetModSettingInt(ModName, "iSeed:Main"))
+	Debug.Trace("GShuf: pushed " + (cats.Length * SlotCount) + " slot values; paintings slot 1 = " + MCM.GetModSettingInt(ModName, "iSlot1:Paintings") + ", seed " + MCM.GetModSettingInt(ModName, "iSeed:Main"))
 EndFunction
 
 Function OnMCMMenuOpen(string asModName)
@@ -111,6 +113,7 @@ Function SlotChanged(string asCategory, int aiSlot, string asId)
 	MCM.SetModSettingInt(ModName, "iVanilla:" + asCategory, 100 - SlotTotal(asCategory))
 	MCM.RefreshMenu()
 	GShuf.SetPercent(asCategory, aiSlot, value)
+	Debug.Trace("GShuf: " + asId + " set to " + value + " (room " + room + ")")
 EndFunction
 
 ; Shuffle button: picks a new layout with the same shares.

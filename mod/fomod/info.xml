@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fomod>
+  <Name>Gallery Shuffle</Name>
+  <Author>Gallery Shuffle</Author>
+  <Version>0.1.0</Version>
+  <Website></Website>
+  <Description>Distributes art from several art mods across the game's paintings, posters, signs and magazines by the shares you set in the MCM. Requires F4SE, MCM and the Runtime Database.</Description>
+  <Groups>
+    <element>Visuals and Graphics</element>
+  </Groups>
+</fomod>

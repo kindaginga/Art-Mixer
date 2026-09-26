@@ -13,3 +13,4 @@ tools/BuildEsl/bin/
 tools/BuildEsl/obj/
 converter/**/bin/
 converter/**/obj/
+dist/

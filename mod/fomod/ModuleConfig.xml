@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://qconsulting.ca/fo3/ModConfig5.0.xsd">
+  <moduleName>Gallery Shuffle</moduleName>
+  <requiredInstallFiles>
+    <folder source="Data" destination="" priority="0" />
+  </requiredInstallFiles>
+  <installSteps order="Explicit">
+    <installStep name="Gallery Shuffle">
+      <optionalFileGroups order="Explicit">
+        <group name="Core" type="SelectAll">
+          <plugins order="Explicit">
+            <plugin name="Gallery Shuffle core">
+              <description>Installs the F4SE plugin (one DLL for game versions 1.10.163 through 1.11.240), the GalleryShuffle.esl quest, the MCM menu and the vanilla art catalog. Convert your art mods with the Gallery Shuffle Converter afterwards.</description>
+              <files>
+                <folder source="Data" destination="" priority="0" />
+              </files>
+              <typeDescriptor>
+                <type name="Required" />
+              </typeDescriptor>
+            </plugin>
+          </plugins>
+        </group>
+      </optionalFileGroups>
+    </installStep>
+  </installSteps>
+</config>
