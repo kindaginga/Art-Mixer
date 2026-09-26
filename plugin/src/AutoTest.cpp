@@ -19,6 +19,8 @@ namespace GShuf::AutoTest
 		std::string s_save;
 		std::string s_mode;
 		std::string s_menuVideo;
+		std::string s_menuAction;  // "click": click CONTINUE; "enter": press Enter; empty: none
+		bool s_pickFirst{ true };  // run the box pick before the menu action
 		std::atomic<bool> s_loadIssued{ false };
 		std::atomic<bool> s_finishIssued{ false };
 		std::atomic<bool> s_confirmed{ false };
@@ -99,25 +101,62 @@ namespace GShuf::AutoTest
 			const float height = static_cast<float>(client.bottom - client.top);
 			const int targetX = static_cast<int>(a_stageX * width / 1280.0f);
 			const int targetY = static_cast<int>(a_stageY * height / 720.0f);
-			for (int step = 0; step < 40; ++step) {
+			// Steps are capped because the engine applies its own sensitivity to the deltas; the tolerance is well inside a list row.
+			for (int step = 0; step < 160; ++step) {
 				const auto [x, y] = MainMenu::CursorPos();
 				if (x < 0) {
 					MouseRelative(1, 1);
-					std::this_thread::sleep_for(std::chrono::milliseconds(100));
+					std::this_thread::sleep_for(std::chrono::milliseconds(60));
 					continue;
 				}
 				const int dx = targetX - x;
 				const int dy = targetY - y;
-				if (std::abs(dx) <= 3 && std::abs(dy) <= 3) {
+				if (std::abs(dx) <= 12 && std::abs(dy) <= 12) {
 					logger::info("autotest: cursor at ({}, {}) for stage ({:.0f}, {:.0f}) after {} steps", x, y, a_stageX, a_stageY, step);
 					return true;
 				}
-				MouseRelative(dx / 2, dy / 2);
-				std::this_thread::sleep_for(std::chrono::milliseconds(100));
+				MouseRelative(std::clamp(dx / 3, -50, 50), std::clamp(dy / 3, -50, 50));
+				std::this_thread::sleep_for(std::chrono::milliseconds(40));
 			}
 			const auto [x, y] = MainMenu::CursorPos();
 			logger::warn("autotest: cursor stuck at ({}, {}) wanting ({}, {})", x, y, targetX, targetY);
 			return false;
+		}
+
+		void ClickStage(float a_stageX, float a_stageY);
+
+		void PressScanCode(std::uint16_t a_scanCode)
+		{
+			INPUT input[2]{};
+			input[0].type = INPUT_KEYBOARD;
+			input[0].ki.wScan = a_scanCode;
+			input[0].ki.dwFlags = KEYEVENTF_SCANCODE;
+			input[1] = input[0];
+			input[1].ki.dwFlags |= KEYEVENTF_KEYUP;
+			SendInput(1, &input[0], sizeof(INPUT));
+			std::this_thread::sleep_for(std::chrono::milliseconds(80));
+			SendInput(1, &input[1], sizeof(INPUT));
+			logger::info("autotest: pressed scan code {:#x}", a_scanCode);
+		}
+
+		// Clicks CONTINUE or presses Enter on the main menu list and reports whether the menu reacted (it closes to load).
+		void MenuAction()
+		{
+			if (s_menuAction.empty()) return;
+			if (s_menuAction == "click") ClickStage(352.0f, 316.0f);
+			else if (s_menuAction == "enter") PressScanCode(0x1C);
+			else if (s_menuAction == "anykey-click") {
+				ClickStage(640.0f, 300.0f);
+				std::this_thread::sleep_for(std::chrono::seconds(3));
+				ClickStage(352.0f, 316.0f);
+			}
+			for (int i = 0; i < 80; ++i) {
+				std::this_thread::sleep_for(std::chrono::milliseconds(100));
+				if (!MainMenu::AtMainMenu()) break;
+			}
+			auto* ui = RE::UI::GetSingleton();
+			logger::info("autotest: menu action '{}' -> MainMenu open {}, at main menu {}, message box open {}, load menu open {}", s_menuAction, ui && ui->GetMenuOpen("MainMenu"), MainMenu::AtMainMenu(), ui && ui->GetMenuOpen("MessageBoxMenu"), ui && ui->GetMenuOpen("LoadingMenu"));
+			Console("Screenshot");
 		}
 
 		void ClickStage(float a_stageX, float a_stageY)
@@ -180,6 +219,7 @@ namespace GShuf::AutoTest
 		bool inSection = false;
 		bool picker = true;
 		bool skipVideos = true;
+
 		while (std::getline(file, line)) {
 			const auto text = Settings::Lower(line);
 			if (text.find('[') != std::string::npos) {
@@ -199,10 +239,14 @@ namespace GShuf::AutoTest
 			if (key.find("smenuvideo") != std::string::npos) s_menuVideo = value;
 			if (key.find("bpicker") != std::string::npos) picker = value == "1";
 			if (key.find("bskipvideos") != std::string::npos) skipVideos = value == "1";
+			if (key.find("smenuaction") != std::string::npos) s_menuAction = Settings::Lower(value);
+			if (key.find("bpickfirst") != std::string::npos) s_pickFirst = value == "1";
+
 		}
 		if (s_enabled) {
 			MainMenu::SetSkipStartupVideos(skipVideos);
 			MainMenu::SetPickerEnabled(picker);
+
 			logger::info("autotest: picker {}, startup videos {}", picker ? "on" : "off", skipVideos ? "skipped" : "played");
 		}
 		if (s_enabled && s_mode == "mainmenu") {
@@ -248,12 +292,19 @@ namespace GShuf::AutoTest
 				// The first click stands in for "press any button"; then the box (956..1256 x 670..696) and row 0, "Vanilla" (rows stack upward from 618).
 				ClickStage(640.0f, 300.0f);
 				std::this_thread::sleep_for(std::chrono::seconds(3));
-				ClickStage(1106.0f, 683.0f);
+				RunOnGameThread([] { MainMenu::LogMenuState("after any-key click"); });
+				if (s_pickFirst) {
+					ClickStage(1106.0f, 683.0f);
+					std::this_thread::sleep_for(std::chrono::seconds(2));
+					Console("Screenshot");
+					ClickStage(1106.0f, 631.0f);
+					std::this_thread::sleep_for(std::chrono::seconds(20));
+				}
+				Console("Screenshot");
+				RunOnGameThread([] { MainMenu::LogMenuState("before menu action"); });
+				std::this_thread::sleep_for(std::chrono::seconds(1));
+				MenuAction();
 				std::this_thread::sleep_for(std::chrono::seconds(2));
-				Console("Screenshot");
-				ClickStage(1106.0f, 631.0f);
-				std::this_thread::sleep_for(std::chrono::seconds(12));
-				Console("Screenshot");
 				std::this_thread::sleep_for(std::chrono::seconds(3));
 				Console("qqq");
 			}).detach();
@@ -274,7 +325,7 @@ namespace GShuf::AutoTest
 
 	void OnPostLoadGame()
 	{
-		if (!s_enabled || s_finishIssued.exchange(true)) return;
+		if (!s_enabled || s_mode == "mainmenu" || s_finishIssued.exchange(true)) return;
 		logger::info("autotest: post load game; screenshot A in 10 s, third-person screenshot P, refresh, screenshot B, slot 1 to 0, screenshot C, then quit");
 		std::thread([] {
 			std::this_thread::sleep_for(std::chrono::seconds(10));

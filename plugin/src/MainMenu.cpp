@@ -19,13 +19,15 @@ namespace GShuf::MainMenu
 		int s_selected{ 0 };
 		std::atomic<int> s_opens{ 0 };
 		std::atomic<int> s_inputLogs{ 0 };
+		std::atomic<int> s_messageLogs{ 0 };
 		std::atomic<int> s_cursorX{ -1 };
 		std::atomic<int> s_cursorY{ -1 };
 		std::atomic<int> s_cursorLogs{ 0 };
 		std::atomic<bool> s_loopOpen{ false };    // the menu loop video has been opened: the intro is over and the real menu is up
 		std::atomic<bool> s_registered{ false };  // the picker menu is registered with the UI
 		std::atomic<bool> s_skipStartup{ false };
-		std::atomic<bool> s_pickerEnabled{ true };  // autotest: startup videos are refused so the menu comes up at once
+		std::atomic<bool> s_pickerEnabled{ true };
+		std::atomic<bool> s_rebuilding{ false };  // a pick is re-creating MainMenu  // autotest: startup videos are refused so the menu comes up at once
 		constexpr auto kPickerMenu = "GShufPicker"sv;
 		void ShowPicker(bool a_show);
 		std::vector<std::string> s_optionIds;
@@ -130,7 +132,9 @@ namespace GShuf::MainMenu
 		public:
 			PickerMenu()
 			{
-				menuFlags.set(RE::UI_MENU_FLAGS::kUsesCursor, RE::UI_MENU_FLAGS::kDontHideCursorWhenTopmost, RE::UI_MENU_FLAGS::kUpdateUsesCursor);
+				// No cursor flags: the engine routes its mouse events to one cursor-using menu only, and that must stay MainMenu
+				// so its list keeps working; the picker takes its own clicks from the cursor position below.
+				menuFlags.set(RE::UI_MENU_FLAGS::kDontHideCursorWhenTopmost);
 				depthPriority = RE::UI_DEPTH_PRIORITY::kMessage;
 				// Copies the render setup of the real main menu so the picker draws in the same layer.
 				if (auto* ui = RE::UI::GetSingleton(); ui) {
@@ -161,27 +165,72 @@ namespace GShuf::MainMenu
 			}
 
 			// Keys and gamepad buttons belong to the main menu underneath; mouse events go to the engine's own handler so clicks reach the movie.
+			// The engine cursor position as stage coordinates of the picker movie; false when unknown.
+			bool CursorStage(double& a_x, double& a_y) const
+			{
+				const auto [px, py] = CursorPos();
+				RECT client{};
+				HWND window = FindWindowW(nullptr, L"Fallout4");
+				if (px < 0 || !window || !GetClientRect(window, &client) || client.right <= 0 || client.bottom <= 0) return false;
+				a_x = px * 1280.0 / client.right;
+				a_y = py * 720.0 / client.bottom;
+				return true;
+			}
+
+			// True when the engine cursor is over the box or its open list; the SWF does the hit test in stage coordinates.
+			bool CursorOverPicker() const
+			{
+				double x = 0.0, y = 0.0;
+				if (!menuObj.IsObject() || !CursorStage(x, y)) return false;
+				RE::Scaleform::GFx::Value args[2]{ RE::Scaleform::GFx::Value(x), RE::Scaleform::GFx::Value(y) };
+				RE::Scaleform::GFx::Value result;
+				return const_cast<RE::Scaleform::GFx::Value&>(menuObj).Invoke("HitTest", &result, args, 2) && result.IsBoolean() && result.GetBoolean();
+			}
+
+			void CallWithCursor(const char* a_function)
+			{
+				double x = 0.0, y = 0.0;
+				if (!menuObj.IsObject() || !CursorStage(x, y)) return;
+				RE::Scaleform::GFx::Value args[2]{ RE::Scaleform::GFx::Value(x), RE::Scaleform::GFx::Value(y) };
+				menuObj.Invoke(a_function, nullptr, args, 2);
+			}
+
+			// Keys and gamepad buttons belong to the main menu underneath. Cursor positions are recorded and drive the row
+			// highlight; a left button press is taken only when the cursor is over the box, and the SWF acts on it directly.
 			bool ShouldHandleEvent(const RE::InputEvent* a_event) override
 			{
-				if (!a_event) return false;
-				const bool mouse = a_event->device == RE::INPUT_DEVICE::kMouse;
-				const bool base = mouse && RE::GameMenuBase::ShouldHandleEvent(a_event);
+				if (!a_event || a_event->device != RE::INPUT_DEVICE::kMouse) return false;
 				if (a_event->eventType == RE::INPUT_EVENT_TYPE::kCursorMove) {
 					const auto* move = static_cast<const RE::CursorMoveEvent*>(a_event);
+					const bool changed = move->cursorPosX != s_cursorX.load() || move->cursorPosY != s_cursorY.load();
 					s_cursorX.store(move->cursorPosX);
 					s_cursorY.store(move->cursorPosY);
-					if (s_cursorLogs.fetch_add(1) < 3) logger::info("mainmenu: picker cursor event at ({}, {}), base {}", move->cursorPosX, move->cursorPosY, base);
-				} else if (s_inputLogs.fetch_add(1) < 40) {
-					logger::info("mainmenu: picker input device {} type {} -> mouse {}, base {}", static_cast<int>(a_event->device.get()), static_cast<int>(a_event->eventType.get()), mouse, base);
+					if (changed) CallWithCursor("Hover");
+					return false;
 				}
-				return base;
+				if (a_event->eventType != RE::INPUT_EVENT_TYPE::kButton) return false;
+				const auto* button = static_cast<const RE::ButtonEvent*>(a_event);
+				// A held button repeats its event every frame; only the first press of the left button counts.
+				const bool press = button->idCode == 0 && button->QJustPressed();
+				const bool over = press && CursorOverPicker();
+				if (press && s_inputLogs.fetch_add(1) < 40) logger::info("mainmenu: picker left press, over the box {}", over);
+				return over;
 			}
 
 			void HandleEvent(const RE::ButtonEvent* a_event) override
 			{
-				if (!a_event || a_event->device != RE::INPUT_DEVICE::kMouse) return;
-				if (s_inputLogs.load() < 60) { ++s_inputLogs; logger::info("mainmenu: picker mouse button {} value {}", a_event->idCode, a_event->value); }
-				RE::GameMenuBase::HandleEvent(a_event);
+				if (!a_event || a_event->device != RE::INPUT_DEVICE::kMouse || a_event->idCode != 0 || !a_event->QJustPressed()) return;
+				CallWithCursor("Click");
+			}
+
+			// Scaleform mouse events are posted to the top menu and swallowed by the base handler; passing them on keeps
+			// MainMenu's own list clickable. The picker takes its clicks through the button event path above instead.
+			RE::UI_MESSAGE_RESULTS ProcessMessage(RE::UIMessage& a_message) override
+			{
+				const auto type = *a_message.type;
+				if (s_messageLogs.fetch_add(1) < 24) logger::info("mainmenu: picker message type {}", static_cast<int>(type));
+				if (type == RE::UI_MESSAGE_TYPE::kScaleformEvent) return RE::UI_MESSAGE_RESULTS::kPassOn;
+				return RE::GameMenuBase::ProcessMessage(a_message);
 			}
 
 			void Call(const Params& a_params) override
@@ -223,8 +272,16 @@ namespace GShuf::MainMenu
 			if (!ui || !ui->GetMenuOpen(kPickerMenu.data())) return;
 			auto main = ui->GetMenu("MainMenu");
 			if (!main) return;
+			LogMenuState("loop open, before cursor flag");
+			// A menu re-created by a pick comes back with a LoadingMenu left open at MainMenu's depth, which swallows the list's input.
+			if (s_rebuilding.exchange(false)) {
+				for (const char* stray : { "LoadingMenu", "HUDMenu" }) {
+					if (ui->GetMenuOpen(stray)) logger::info("mainmenu: {} open after the rebuild", stray);
+				}
+			}
 			const bool had = main->menuFlags.all(RE::UI_MENU_FLAGS::kUsesCursor);
-			main->menuFlags.set(RE::UI_MENU_FLAGS::kUsesCursor);
+			// Both cursor flags, as MainMenu's own key-press transition sets them: the update flag routes mouse events to its movie.
+			main->menuFlags.set(RE::UI_MENU_FLAGS::kUsesCursor, RE::UI_MENU_FLAGS::kUpdateUsesCursor);
 			ui->RefreshCursor();
 			logger::info("mainmenu: MainMenu cursor flag was {}, cursor refreshed; cursor menu open {}", had, ui->GetMenuOpen(RE::CursorMenu::MENU_NAME));
 		}
@@ -338,9 +395,34 @@ namespace GShuf::MainMenu
 		logger::info("mainmenu: {} video options, selected {} ('{}')", s_options.size(), s_selected, saved);
 	}
 
+	void LogMenuState(const char* a_tag)
+	{
+		auto* ui = RE::UI::GetSingleton();
+		auto main = ui ? ui->GetMenu("MainMenu") : nullptr;
+		std::string stack;
+		bool ignoreKeyboard = false;
+		if (auto* controls = RE::ControlMap::GetSingleton(); controls) {
+			for (const auto& context : controls->contextPriorityStack) stack += std::to_string(static_cast<int>(context.get())) + " ";
+			ignoreKeyboard = controls->ignoreKeyboardMouse;
+		}
+		std::string menus;
+		if (ui) {
+			for (const auto& entry : ui->menuStack) {
+				if (!entry) continue;
+				menus += fmt::format("{}(d{} f{:#x} in{} top{} vis{}) ", entry->menuName.c_str() ? entry->menuName.c_str() : "?", static_cast<int>(entry->depthPriority.get()), entry->menuFlags.underlying(), entry->inputEventHandlingEnabled ? 1 : 0, entry->passesTopMenuTest ? 1 : 0, entry->menuCanBeVisible ? 1 : 0);
+			}
+		}
+		if (main) {
+			logger::info("mainmenu: state [{}]: flags {:#x}, inputContext {}, passesTop {}, control stack [{}], ignoreKeyboardMouse {}, menu stack [{}]", a_tag, main->menuFlags.underlying(), static_cast<int>(main->inputContext.get()), main->passesTopMenuTest, stack, ignoreKeyboard, menus);
+		} else {
+			logger::info("mainmenu: state [{}]: MainMenu not open, control stack [{}]", a_tag, stack);
+		}
+	}
+
 	std::pair<int, int> CursorPos()
 	{
-		// The engine's own cursor position; the per-frame cursor events the picker receives lag behind it on the press-start page.
+		// The engine's own cursor position in window pixels; the per-frame cursor events stop reaching the picker when
+		// another menu above it takes them (the 1.11 promo banner does), so they are only the fallback.
 		if (auto* cursor = RE::MenuCursor::GetSingleton(); cursor) return { cursor->cursorPosX, cursor->cursorPosY };
 		return { s_cursorX.load(), s_cursorY.load() };
 	}
@@ -367,16 +449,15 @@ namespace GShuf::MainMenu
 			logger::info("mainmenu: selected {} -> '{}'", s_options[a_index].name, s_menuVideo);
 			SaveState();
 		}
-		// The main menu opens its video when the menu is created, so it is closed and re-created to pick up the new file.
-		if (auto* queue = RE::UIMessageQueue::GetSingleton(); queue) {
-			queue->AddMessage(RE::BSFixedString("MainMenu"), RE::UI_MESSAGE_TYPE::kHide);
-		}
-		std::thread([] {
-			std::this_thread::sleep_for(std::chrono::seconds(1));
-			F4SE::GetTaskInterface()->AddTask([] {
-				if (auto* queue = RE::UIMessageQueue::GetSingleton(); queue) queue->AddMessage(RE::BSFixedString("MainMenu"), RE::UI_MESSAGE_TYPE::kShow);
-			});
-		}).detach();
+		// The main menu opens its video when it is created. Hiding and showing the menu re-creates it with a dead list, so the
+		// engine's own return-to-main-menu sequence is requested instead, the path the game takes when leaving a save.
+		s_rebuilding.store(true);
+		F4SE::GetTaskInterface()->AddTask([] {
+			if (auto* game = RE::Main::GetSingleton(); game) {
+				game->resetGame = true;
+				logger::info("mainmenu: game reset requested for the video switch");
+			}
+		});
 	}
 
 	void SetMenuVideo(const std::string& a_path)

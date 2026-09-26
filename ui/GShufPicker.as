@@ -33,6 +33,38 @@ package {
             return false;
         }
 
+        // Called from the plugin before it accepts a mouse click: true when the stage point is over the box or its open list.
+        public function HitTest(stageX:Number, stageY:Number):Boolean {
+            return button.hitTestPoint(stageX, stageY, true) || (list.visible && list.hitTestPoint(stageX, stageY, true));
+        }
+
+        // The plugin delivers clicks itself (this menu owns no engine cursor): the box toggles the list, a row selects.
+        public function Click(stageX:Number, stageY:Number):void {
+            if (button.hitTestPoint(stageX, stageY, true)) {
+                toggleList();
+                return;
+            }
+            if (!list.visible) return;
+            for (var i:int = 0; i < list.numChildren; i++) {
+                var row:Sprite = list.getChildAt(i) as Sprite;
+                if (row != null && row.hitTestPoint(stageX, stageY, true)) {
+                    selectRow(i);
+                    return;
+                }
+            }
+            listOpen = false;
+            list.visible = false;
+        }
+
+        // Row highlight for the cursor position the plugin reports.
+        public function Hover(stageX:Number, stageY:Number):void {
+            if (!list.visible) return;
+            for (var i:int = 0; i < list.numChildren; i++) {
+                var row:Sprite = list.getChildAt(i) as Sprite;
+                if (row != null) row.alpha = row.hitTestPoint(stageX, stageY, true) ? 0.7 : 1.0;
+            }
+        }
+
         // Called from the plugin with the pack names and the selected index.
         public function SetOptions(options:Array, selectedIndex:int):void {
             names = options;
@@ -94,18 +126,25 @@ package {
             list.visible = listOpen && rows > 0;
         }
 
-        private function onButtonClick(e:MouseEvent):void {
+        private function toggleList():void {
             if (names.length < 2) return;
             listOpen = !listOpen;
             list.visible = listOpen;
         }
 
-        private function onRowClick(e:MouseEvent):void {
-            var index:int = int(String(e.currentTarget.name).substr(3));
+        private function selectRow(index:int):void {
             selected = index;
             listOpen = false;
             redraw();
             if (BGSCodeObj != null && BGSCodeObj.onSelect != null) BGSCodeObj.onSelect(index);
+        }
+
+        private function onButtonClick(e:MouseEvent):void {
+            toggleList();
+        }
+
+        private function onRowClick(e:MouseEvent):void {
+            selectRow(int(String(e.currentTarget.name).substr(3)));
         }
 
         private function onRowOver(e:MouseEvent):void { e.currentTarget.alpha = 0.7; }

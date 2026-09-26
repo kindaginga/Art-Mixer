@@ -24,6 +24,8 @@ namespace GShuf::MainMenu
 	void SetPickerEnabled(bool a_enabled);
 	// Last cursor position the picker menu was given by the engine (cursor move events), in the engine's cursor units.
 	[[nodiscard]] std::pair<int, int> CursorPos();
+	// Logs MainMenu's flags and input context and the control map's context stack (diagnostics).
+	void LogMenuState(const char* a_tag);
 	[[nodiscard]] int Selected();
 	[[nodiscard]] int OptionCount();
 	// Applies a choice by index and re-shows the main menu so the new video starts.
