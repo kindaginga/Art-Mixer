@@ -28,6 +28,11 @@ package {
             build();
         }
 
+        // The engine forwards key events here for menus that opt in; this one does not use them.
+        public function ProcessUserEvent(name:String, up:Boolean):Boolean {
+            return false;
+        }
+
         // Called from the plugin with the pack names and the selected index.
         public function SetOptions(options:Array, selectedIndex:int):void {
             names = options;

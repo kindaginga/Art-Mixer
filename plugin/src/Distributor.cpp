@@ -34,6 +34,7 @@ namespace GShuf::Distributor
 		std::atomic<std::size_t> s_referencesSeen{ 0 };
 		std::atomic<std::size_t> s_referenceSwaps{ 0 };
 		std::atomic<int> s_referenceLogs{ 0 };
+		std::atomic<int> s_pipboyLogs{ 0 };
 		std::atomic<bool> s_reapplyQueued{ false };
 		std::atomic<std::size_t> s_set3DCalls{ 0 };
 
@@ -133,8 +134,12 @@ namespace GShuf::Distributor
 	{
 		if (!Engine::Available() || Catalog::Count() == 0) return;
 		++s_modelsSeen;
-		// Only precombined meshes are handled on the template; everything else gets a pick per reference in OnReference3D.
-		if (!IsPrecombined(a_modelPath ? a_modelPath : "")) return;
+		// Precombined meshes and the Pip-Boy (the player's 3D never passes the reference hook) are handled on the template;
+		// everything else gets a pick per reference in OnReference3D.
+		const auto modelLower = Settings::Lower(a_modelPath ? a_modelPath : "");
+		const bool pipboy = modelLower.find("pipboy") != std::string::npos;
+		if (pipboy && s_pipboyLogs.fetch_add(1) < 10) logger::info("distributor: pip-boy model loaded: {}", a_modelPath ? a_modelPath : "");
+		if (!IsPrecombined(modelLower) && !pipboy) return;
 		const auto values = Settings::Get();
 		std::vector<Entry> found;
 		Engine::ForEachGeometry(a_root, [&](RE::NiAVObject* a_geometry, int a_index) {
@@ -145,6 +150,7 @@ namespace GShuf::Distributor
 			Entry entry;
 			entry.geometry.reset(a_geometry);
 			entry.model = a_modelPath;
+			if (pipboy && s_pipboyLogs.load() < 20) { ++s_pipboyLogs; logger::info("distributor: pip-boy geometry #{} in {}: {} ({})", a_index, a_modelPath, name, slot->category); }
 			entry.index = a_index;
 			entry.originalName = name;
 			entry.slot = slot;

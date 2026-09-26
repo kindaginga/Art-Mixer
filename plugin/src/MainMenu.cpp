@@ -129,6 +129,10 @@ namespace GShuf::MainMenu
 				MapCodeMethodToASFunction("onSelect", 0);
 			}
 
+			// Keys and gamepad buttons belong to the main menu underneath; the picker only takes mouse clicks through Scaleform.
+			bool ShouldHandleEvent(const RE::InputEvent*) override { return false; }
+			void HandleEvent(const RE::ButtonEvent*) override {}
+
 			void Call(const Params& a_params) override
 			{
 				// The first argument is the mapped function id, the rest are the ActionScript arguments.
