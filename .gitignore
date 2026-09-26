@@ -6,3 +6,4 @@ dist/
 converter/**/bin/
 converter/**/obj/
 CMakeUserPresets.json
+tools/launch.cmd
