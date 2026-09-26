@@ -23,8 +23,9 @@ public sealed class MainForm : Form
     public MainForm()
     {
         Text = "Gallery Shuffle Converter";
-        MinimumSize = new Size(760, 600);
-        Size = new Size(900, 700);
+        MinimumSize = new Size(820, 640);
+        Size = new Size(960, 760);
+        AutoScaleMode = AutoScaleMode.Dpi;
         StartPosition = FormStartPosition.CenterScreen;
         AllowDrop = true;
 
@@ -34,7 +35,7 @@ public sealed class MainForm : Form
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
 
         int row = 0;
-        void Add(string label, Control control, Control? side = null, int height = 30)
+        void Add(string label, Control control, Control? side = null, int height = 34)
         {
             grid.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
             grid.Controls.Add(new Label { Text = label, TextAlign = ContentAlignment.MiddleLeft, Dock = DockStyle.Fill }, 0, row);
@@ -46,25 +47,25 @@ public sealed class MainForm : Form
         Add("Deliver packs to", _destination);
         Add("Fallout 4 folder", _game, _browseGame);
         Add("Output folder", _folder, _browseFolder);
-        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
-        grid.Controls.Add(new Label { Text = "Art mods to convert (drop archives or folders here; every run rebuilds the packs, so list all of them each time):", AutoSize = true, Dock = DockStyle.Fill }, 0, row);
+        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        grid.Controls.Add(new Label { Text = "Art mods to convert (drop archives or folders here; every run rebuilds the packs, so list all of them each time):", AutoSize = true, Margin = new Padding(3, 8, 3, 3) }, 0, row);
         grid.SetColumnSpan(grid.GetControlFromPosition(0, row)!, 3);
         row++;
-        var addFiles = new Button { Text = "Add archives", Dock = DockStyle.Top };
-        var addFolder = new Button { Text = "Add folder", Dock = DockStyle.Top };
-        var remove = new Button { Text = "Remove selected", Dock = DockStyle.Top };
-        var sidePanel = new Panel { Dock = DockStyle.Fill };
-        sidePanel.Controls.Add(remove);
-        sidePanel.Controls.Add(addFolder);
+        var addFiles = new Button { Text = "Add archives", Width = 140, Height = 32, Margin = new Padding(3, 0, 0, 6) };
+        var addFolder = new Button { Text = "Add folder", Width = 140, Height = 32, Margin = new Padding(3, 0, 0, 6) };
+        var remove = new Button { Text = "Remove selected", Width = 140, Height = 32, Margin = new Padding(3, 0, 0, 6) };
+        var sidePanel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false };
         sidePanel.Controls.Add(addFiles);
+        sidePanel.Controls.Add(addFolder);
+        sidePanel.Controls.Add(remove);
         grid.RowStyles.Add(new RowStyle(SizeType.Percent, 40));
         grid.Controls.Add(_mods, 0, row);
         grid.SetColumnSpan(_mods, 2);
         grid.Controls.Add(sidePanel, 2, row);
         row++;
-        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
+        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         grid.Controls.Add(_vanilla, 0, row); grid.SetColumnSpan(_vanilla, 3); row++;
-        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
+        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         grid.Controls.Add(_split, 0, row); grid.SetColumnSpan(_split, 3); row++;
         grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         grid.Controls.Add(_convert, 0, row); grid.SetColumnSpan(_convert, 2);
