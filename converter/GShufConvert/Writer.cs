@@ -39,6 +39,7 @@ public sealed class Writer
     public PackOutput WritePack(Source source, List<FoundImage> images, HashSet<string> usedIds)
     {
         var id = Sources.Sanitize(source.Name);
+        if (id.Length > 40) id = id[..32] + "-" + ShortHash(id);
         var baseId = id;
         for (var n = 2; usedIds.Contains(id); n++) id = $"{baseId}-{n}";
         usedIds.Add(id);
@@ -49,8 +50,10 @@ public sealed class Writer
             var stem = Path.GetFileNameWithoutExtension(image.Diffuse);
             if (stem.EndsWith("_d", StringComparison.OrdinalIgnoreCase)) stem = stem[..^2];
             var bar = image.Diffuse.IndexOf('|');
-            if (bar > 0) stem = Sources.Sanitize(image.Diffuse[..bar]) + "-" + stem;
+            // Pooled FOMOD options prefix a short hash of the option name; the engine's file paths stay under MAX_PATH.
+            if (bar > 0) stem = ShortHash(image.Diffuse[..bar]) + "-" + stem;
             stem = Sources.Sanitize(stem);
+            if (stem.Length > 48) stem = stem[..40] + "-" + ShortHash(stem);
             var unique = stem;
             for (var n = 2; !names.Add(unique); n++) unique = $"{stem}-{n}";
             var textureRel = $"GShuf\\Packs\\{id}\\{unique}_d.dds";
@@ -191,6 +194,11 @@ public sealed class Writer
         WriteFile(Path.Combine("GShuf", "convert-report.txt"), Encoding.UTF8.GetBytes(_report.ToString()));
     }
 
+    private static string ShortHash(string text)
+    {
+        return Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(text.ToLowerInvariant())))[..8].ToLowerInvariant();
+    }
+
     private BGSM? TemplateMaterial(FoundImage image, Source source)
     {
         byte[]? bytes = null;
@@ -217,6 +225,8 @@ public sealed class Writer
 
     private void WriteFile(string relative, byte[] bytes)
     {
+        // The game resolves loose files as <game>\Data\<relative>; Windows path limits apply there, not in this tool.
+        if (relative.Length > 150) _report.Warn($"path is {relative.Length} characters, which may exceed the game's path limit: {relative}");
         var path = Path.Combine(_out, relative);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllBytes(path, bytes);
