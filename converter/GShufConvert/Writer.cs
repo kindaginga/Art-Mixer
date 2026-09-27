@@ -132,14 +132,18 @@ public sealed class Writer
         WriteFile(Path.Combine("GShuf", "packs.json"), JsonSerializer.SerializeToUtf8Bytes(doc, new JsonSerializerOptions { WriteIndented = true }));
     }
 
-    /// <summary>Generates the MCM pages: one per art category with a slider per pack and the derived Vanilla slider;
-    /// the two Pip-Boy pages hold one list each (Vanilla or a pack), stored as iPick.</summary>
+    /// <summary>Generates the MCM pages: one per art category with a slider per pack and the derived Vanilla slider,
+    /// and one Pip-Boy page with a list for the screen background and one for the skin (Vanilla or a pack), stored as iPick.</summary>
     public void WriteMcm(List<PackOutput> packs, int slotsPerCategory)
     {
         string[] categories = ["paintings", "posters", "signage", "magazines", "quest", "pipboyscreen", "pipboyskin"];
         string[] titles = ["Paintings", "Posters", "Signage", "Magazines", "Quest", "PipBoyScreen", "PipBoySkin"];
         string[] pageTitles = ["Paintings", "Posters", "Signage", "Magazines", "Quest", "Pip-Boy screen", "Pip-Boy skin"];
         var pages = new List<object>();
+        var pipboyContent = new List<object>
+        {
+            new { type = "text", text = "Which pack the Pip-Boy wears. One choice each; Vanilla keeps the game's own. Applies to the Pip-Boy the next time it loads (a save load at the latest).", html = false },
+        };
         var settings = new StringBuilder("[Main]\nbBlankCanvases=0\niSeed=1\nsPackSignature=\n");
         for (var c = 0; c < categories.Length; c++)
         {
@@ -157,15 +161,8 @@ public sealed class Writer
                 if (slots.Count == 0) continue;
                 var options = new List<string> { "Vanilla" };
                 options.AddRange(slots.Select(p => p.Name));
-                pages.Add(new
-                {
-                    pageDisplayName = pageTitles[c],
-                    content = new object[]
-                    {
-                        new { type = "text", text = $"Which pack supplies the {pageTitles[c]}. One choice; Vanilla keeps the game's own.", html = false },
-                        new { id = $"iPick:{titles[c]}", type = "dropdown", text = pageTitles[c], help = "Applies to the Pip-Boy the next time it loads (a save load at the latest).", valueOptions = new { options = options.ToArray(), sourceType = "ModSettingInt" } },
-                    },
-                });
+                var label = categories[c] == "pipboyscreen" ? "Screen background" : "Skin";
+                pipboyContent.Add(new { id = $"iPick:{titles[c]}", type = "dropdown", text = label, help = $"{slots.Count} packs offer a {label.ToLowerInvariant()}.", valueOptions = new { options = options.ToArray(), sourceType = "ModSettingInt" } });
                 continue;
             }
             for (var s = 1; s <= slotsPerCategory; s++) settings.Append($"iSlot{s}=0\n");
@@ -197,6 +194,7 @@ public sealed class Writer
             });
             pages.Add(new { pageDisplayName = pageTitles[c], content });
         }
+        if (pipboyContent.Count > 1) pages.Add(new { pageDisplayName = "Pip-Boy", content = pipboyContent.ToArray() });
         var config = new
         {
             modName = "GalleryShuffle",

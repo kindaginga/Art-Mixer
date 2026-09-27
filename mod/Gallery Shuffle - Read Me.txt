@@ -60,7 +60,7 @@ What the converter recognizes:
     Picking one restarts the main menu with that video; the choice is kept in GShuf\state.json.
   - Pip-Boy replacers: the screen background (textures\AnimObjects\Pipboy\PipBoyScreen_d.dds) and the
     device skin (PipBoy01_d, PipBoy02_d, PipBoyLabels01_d, PipBoyInterior01_d, PipBoyGlow01_d) get their own
-    "Pip-Boy screen" and "Pip-Boy skin" pages, each a list: Vanilla or one pack.
+    "Pip-Boy" page: one list for the screen background and one for the skin, Vanilla or one pack each.
   - Textures at vanilla art paths (replacer mods): each picture is tied to the vanilla frame it replaces.
   - Materials (.bgsm) at vanilla art paths that point at new textures.
   - Standalone art mods: every material with its own picture texture. The category (paintings, posters,
@@ -74,7 +74,7 @@ MENU
 ----
   Category pages   one slider per pack (its share in percent) and the derived "Vanilla (remainder)".
                    A slider stops at whatever is left; the shares never exceed 100.
-  Pip-Boy pages    one list each: Vanilla or the pack whose screen background or skin the Pip-Boy wears.
+  Pip-Boy page     two lists, screen background and skin: Vanilla or the pack the Pip-Boy wears.
   Put art on blank canvases   also fills the empty canvases and frames the game places.
   Shuffle layout   picks a new arrangement with the same shares.
   Reset all settings   every share back to 0 (all vanilla), blank canvases off, seed and main menu reset.
