@@ -49,8 +49,9 @@ The window finds your Mod Organizer 2 instances and Vortex by itself:
                      buttons. Every run rebuilds all packs, so list every art mod each time.
   Convert            writes the "Gallery Shuffle Packs" mod (or, for Vortex, a zip in its downloads).
 
-Each mod becomes one pack. A FOMOD's option sets are pooled into it, so alternative versions of the same
-picture are shuffled too; tick "One pack per FOMOD option" to keep them apart instead.
+Each mod becomes one pack. When a mod's installer offers alternative picture sets, they are pooled into that
+pack and shuffled together; tick "Give each alternative picture set its own slider" to give each set its own
+pack and slider instead.
 The log in the window and GShuf\convert-report.txt in the output list what was found in each mod.
 Each category page has 10 pack slots; the report names any pack that got no slider.
 

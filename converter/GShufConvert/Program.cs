@@ -87,7 +87,7 @@ public static class Program
         Console.WriteLine("  GalleryShuffleConverter --game \"<Fallout 4 folder>\" --out \"<mods folder>\\Gallery Shuffle Packs\" <art mod folder or archive> ...");
         Console.WriteLine("  --zip <file>       also zip the output (for Vortex's downloads folder)");
         Console.WriteLine("  --no-vanilla       skip the vanilla pack");
-        Console.WriteLine("  --split-options    one pack per FOMOD option instead of one pack per mod");
+        Console.WriteLine("  --split-options    each alternative picture set a mod's installer offers becomes its own pack");
         Console.WriteLine("  --keep-temp        keep the extracted archives in the temp folder for inspection");
     }
 

@@ -10,7 +10,8 @@ public sealed class MainForm : Form
     private readonly TextBox _folder = new() { Dock = DockStyle.Fill };
     private readonly ListBox _mods = new() { Dock = DockStyle.Fill, AllowDrop = true, SelectionMode = SelectionMode.MultiExtended, IntegralHeight = false };
     private readonly CheckBox _vanilla = new() { Text = "Include the vanilla pictures as their own pack (recommended)", Checked = true, AutoSize = true };
-    private readonly CheckBox _split = new() { Text = "One pack per FOMOD option instead of one per mod", AutoSize = true };
+    private readonly CheckBox _split = new() { Text = "Give each alternative picture set its own slider (for mods whose installer lets you pick a set)", AutoSize = true };
+    private readonly ToolTip _tips = new() { AutoPopDelay = 30000 };
     private readonly Button _convert = new() { Text = "Convert", Height = 40, Dock = DockStyle.Fill, Font = new Font(FontFamily.GenericSansSerif, 11, FontStyle.Bold) };
     private readonly TextBox _log = new() { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, Font = new Font(FontFamily.GenericMonospace, 9) };
     private readonly Label _status = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
@@ -67,6 +68,8 @@ public sealed class MainForm : Form
         grid.Controls.Add(_vanilla, 0, row); grid.SetColumnSpan(_vanilla, 3); row++;
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         grid.Controls.Add(_split, 0, row); grid.SetColumnSpan(_split, 3); row++;
+        _tips.SetToolTip(_split, "Some art mods ask during installation which pictures you want, for example one calendar set or another.\nUnticked: all of a mod's sets go into one pack with one slider, and their pictures are shuffled together.\nTicked: each set becomes its own pack with its own slider. Each category page has room for 10 pack sliders.");
+        Disposed += (_, _) => _tips.Dispose();
         grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         grid.Controls.Add(_convert, 0, row); grid.SetColumnSpan(_convert, 2);
         grid.Controls.Add(_openOutput, 2, row); row++;
