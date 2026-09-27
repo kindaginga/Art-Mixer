@@ -17,7 +17,48 @@ Function Register()
 	RegisterForExternalEvent("OnMCMMenuOpen|" + ModName, "OnMCMMenuOpen")
 	Debug.Trace("GShuf: Config registered; plugin ready " + GShuf.IsReady() + ", plugin version " + GShuf.GetVersion())
 	CheckPackSignature()
+	CleanHiddenSlots()
 	PushAll()
+EndFunction
+
+; Number of slots a category shows; anything above it is a leftover from an earlier pack set.
+int Function VisibleSlots(string asCategory)
+	If !GShuf.IsReady()
+		Return SlotCount
+	EndIf
+	int n = GShuf.GetSlotCount(asCategory)
+	If n > SlotCount
+		n = SlotCount
+	EndIf
+	Return n
+EndFunction
+
+; Zeroes slots above a category's pack count and picks beyond the list, so leftovers never count toward the cap.
+Function CleanHiddenSlots()
+	If !GShuf.IsReady()
+		Return
+	EndIf
+	string[] cats = Categories()
+	int c = 0
+	While c < cats.Length
+		int visible = VisibleSlots(cats[c])
+		If IsPick(cats[c])
+			If MCM.GetModSettingInt(ModName, "iPick:" + cats[c]) > visible
+				MCM.SetModSettingInt(ModName, "iPick:" + cats[c], 0)
+			EndIf
+		Else
+			int slot = visible + 1
+			While slot <= SlotCount
+				If MCM.GetModSettingInt(ModName, "iSlot" + slot + ":" + cats[c]) != 0
+					MCM.SetModSettingInt(ModName, "iSlot" + slot + ":" + cats[c], 0)
+					Debug.Trace("GShuf: cleared leftover slot " + slot + " of " + cats[c])
+				EndIf
+				slot += 1
+			EndWhile
+			MCM.SetModSettingInt(ModName, "iVanilla:" + cats[c], 100 - SlotTotal(cats[c]))
+		EndIf
+		c += 1
+	EndWhile
 EndFunction
 
 ; Zeroes every share when the installed pack set differs from the one these settings were made for.
@@ -93,11 +134,12 @@ Function PushPick(string asCategory)
 	Debug.Trace("GShuf: " + asCategory + " pick " + pick)
 EndFunction
 
-; Sum of the pack slots in a category, optionally leaving one slot out.
+; Sum of the shown pack slots in a category, optionally leaving one slot out.
 int Function SlotTotal(string asCategory, int aiSkipSlot = 0)
 	int total = 0
+	int last = VisibleSlots(asCategory)
 	int slot = 1
-	While slot <= SlotCount
+	While slot <= last
 		If slot != aiSkipSlot
 			total += MCM.GetModSettingInt(ModName, "iSlot" + slot + ":" + asCategory)
 		EndIf

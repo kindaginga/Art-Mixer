@@ -77,7 +77,8 @@ MENU
   Pip-Boy page     two lists, screen background and skin: Vanilla or the pack the Pip-Boy wears.
   Put art on blank canvases   also fills the empty canvases and frames the game places.
   Shuffle layout   picks a new arrangement with the same shares.
-  Reset all settings   every share back to 0 (all vanilla), blank canvases off, seed and main menu reset.
+  Reset all settings   every category back on Vanilla at 100 with every pack at 0, both Pip-Boy lists on
+                       Vanilla, blank canvases off, seed 1, main menu video Vanilla.
   When the converter is run again and the pack set changed, all shares reset by themselves and a message
   says so, since slot numbers may now point at different packs.
 
