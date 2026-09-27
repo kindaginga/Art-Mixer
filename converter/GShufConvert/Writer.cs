@@ -132,7 +132,8 @@ public sealed class Writer
         WriteFile(Path.Combine("GShuf", "packs.json"), JsonSerializer.SerializeToUtf8Bytes(doc, new JsonSerializerOptions { WriteIndented = true }));
     }
 
-    /// <summary>Generates the MCM pages: one per category with a slider per pack and the derived Vanilla slider.</summary>
+    /// <summary>Generates the MCM pages: one per art category with a slider per pack and the derived Vanilla slider;
+    /// the two Pip-Boy pages hold one list each (Vanilla or a pack), stored as iPick.</summary>
     public void WriteMcm(List<PackOutput> packs, int slotsPerCategory)
     {
         string[] categories = ["paintings", "posters", "signage", "magazines", "quest", "pipboyscreen", "pipboyskin"];
@@ -144,13 +145,31 @@ public sealed class Writer
         videoOptions.AddRange(packs.Where(p => p.Video != null).Select(p => p.Name));
         for (var c = 0; c < categories.Length; c++)
         {
+            var pick = categories[c].StartsWith("pipboy", StringComparison.Ordinal);
             var eligible = packs.Where(p => p.Id != "vanilla" && p.Images.Any(i => i.Category == categories[c])).ToList();
             var slots = eligible.Take(slotsPerCategory).ToList();
             if (eligible.Count > slotsPerCategory)
             {
-                _report.Warn($"{titles[c]}: {eligible.Count} packs but only {slotsPerCategory} slider slots; without a slider: {string.Join(", ", eligible.Skip(slotsPerCategory).Select(p => p.Name))}. Convert fewer mods or fewer FOMOD sets for this category.");
+                _report.Warn($"{titles[c]}: {eligible.Count} packs but only {slotsPerCategory} slots; left out: {string.Join(", ", eligible.Skip(slotsPerCategory).Select(p => p.Name))}. Convert fewer mods or fewer FOMOD sets for this category.");
             }
             settings.Append($"\n[{titles[c]}]\n");
+            if (pick)
+            {
+                settings.Append("iPick=0\n");
+                if (slots.Count == 0) continue;
+                var options = new List<string> { "Vanilla" };
+                options.AddRange(slots.Select(p => p.Name));
+                pages.Add(new
+                {
+                    pageDisplayName = pageTitles[c],
+                    content = new object[]
+                    {
+                        new { type = "text", text = $"Which pack supplies the {pageTitles[c]}. One choice; Vanilla keeps the game's own.", html = false },
+                        new { id = $"iPick:{titles[c]}", type = "dropdown", text = pageTitles[c], help = "Applies to the Pip-Boy the next time it loads (a save load at the latest).", valueOptions = new { options = options.ToArray(), sourceType = "ModSettingInt" } },
+                    },
+                });
+                continue;
+            }
             for (var s = 1; s <= slotsPerCategory; s++) settings.Append($"iSlot{s}=0\n");
             settings.Append("iVanilla=100\n");
             if (slots.Count == 0) continue;

@@ -21,6 +21,8 @@ namespace GShuf::AutoTest
 		std::string s_menuVideo;
 		std::string s_menuAction;  // "click": click CONTINUE; "enter": press Enter; empty: none
 		bool s_pickFirst{ true };  // run the box pick before the menu action
+		bool s_anyKey{ true };     // click once as the "press any button" step
+		int s_idleSeconds{ 200 };  // length of the "idle" menu action
 		std::atomic<bool> s_loadIssued{ false };
 		std::atomic<bool> s_finishIssued{ false };
 		std::atomic<bool> s_confirmed{ false };
@@ -149,6 +151,14 @@ namespace GShuf::AutoTest
 				ClickStage(640.0f, 300.0f);
 				std::this_thread::sleep_for(std::chrono::seconds(3));
 				ClickStage(352.0f, 316.0f);
+			} else if (s_menuAction == "idle") {
+				// No input at all; a screenshot every 30 s shows what the engine plays while the player is away.
+				for (int elapsed = 0; elapsed < s_idleSeconds; elapsed += 30) {
+					std::this_thread::sleep_for(std::chrono::seconds(30));
+					Console("Screenshot");
+					logger::info("autotest: idle {} s, at main menu {}", elapsed + 30, MainMenu::AtMainMenu());
+				}
+				return;
 			}
 			for (int i = 0; i < 80; ++i) {
 				std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -241,6 +251,8 @@ namespace GShuf::AutoTest
 			if (key.find("bskipvideos") != std::string::npos) skipVideos = value == "1";
 			if (key.find("smenuaction") != std::string::npos) s_menuAction = Settings::Lower(value);
 			if (key.find("bpickfirst") != std::string::npos) s_pickFirst = value == "1";
+			if (key.find("banykey") != std::string::npos) s_anyKey = value == "1";
+			if (key.find("iidleseconds") != std::string::npos) s_idleSeconds = std::stoi(value);
 
 		}
 		if (s_enabled) {
@@ -290,9 +302,11 @@ namespace GShuf::AutoTest
 				std::this_thread::sleep_for(std::chrono::seconds(5));
 				Console("Screenshot");
 				// The first click stands in for "press any button"; then the box (956..1256 x 670..696) and row 0, "Vanilla" (rows stack upward from 618).
-				ClickStage(640.0f, 300.0f);
-				std::this_thread::sleep_for(std::chrono::seconds(3));
-				RunOnGameThread([] { MainMenu::LogMenuState("after any-key click"); });
+				if (s_anyKey) {
+					ClickStage(640.0f, 300.0f);
+					std::this_thread::sleep_for(std::chrono::seconds(3));
+					RunOnGameThread([] { MainMenu::LogMenuState("after any-key click"); });
+				}
 				if (s_pickFirst) {
 					ClickStage(1106.0f, 683.0f);
 					std::this_thread::sleep_for(std::chrono::seconds(2));

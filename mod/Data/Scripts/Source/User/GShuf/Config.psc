@@ -37,17 +37,21 @@ Function CheckPackSignature()
 	MCM.SetModSettingString(ModName, "sPackSignature:Main", current)
 EndFunction
 
-; Reset button and pack-change reset: every share to 0 (all vanilla), blank canvases off, seed 1.
+; Reset button and pack-change reset: every share to 0 (all vanilla), Pip-Boy picks to Vanilla, blank canvases off, seed 1.
 Function ResetAll()
 	string[] cats = Categories()
 	int c = 0
 	While c < cats.Length
-		int slot = 1
-		While slot <= SlotCount
-			MCM.SetModSettingInt(ModName, "iSlot" + slot + ":" + cats[c], 0)
-			slot += 1
-		EndWhile
-		MCM.SetModSettingInt(ModName, "iVanilla:" + cats[c], 100)
+		If IsPick(cats[c])
+			MCM.SetModSettingInt(ModName, "iPick:" + cats[c], 0)
+		Else
+			int slot = 1
+			While slot <= SlotCount
+				MCM.SetModSettingInt(ModName, "iSlot" + slot + ":" + cats[c], 0)
+				slot += 1
+			EndWhile
+			MCM.SetModSettingInt(ModName, "iVanilla:" + cats[c], 100)
+		EndIf
 		c += 1
 	EndWhile
 	MCM.SetModSettingBool(ModName, "bBlankCanvases:Main", false)
@@ -68,6 +72,26 @@ string[] Function Categories()
 	list[5] = "PipBoyScreen"
 	list[6] = "PipBoySkin"
 	Return list
+EndFunction
+
+; The Pip-Boy pages hold one list each instead of shares: iPick is 0 for Vanilla or the slot number of the chosen pack.
+bool Function IsPick(string asCategory)
+	Return asCategory == "PipBoyScreen" || asCategory == "PipBoySkin"
+EndFunction
+
+; Sends a list choice to the plugin as one slot at 100 and every other slot at 0.
+Function PushPick(string asCategory)
+	int pick = MCM.GetModSettingInt(ModName, "iPick:" + asCategory)
+	int slot = 1
+	While slot <= SlotCount
+		If slot == pick
+			GShuf.SetPercent(asCategory, slot, 100)
+		Else
+			GShuf.SetPercent(asCategory, slot, 0)
+		EndIf
+		slot += 1
+	EndWhile
+	Debug.Trace("GShuf: " + asCategory + " pick " + pick)
 EndFunction
 
 ; Sum of the pack slots in a category, optionally leaving one slot out.
@@ -91,12 +115,16 @@ Function PushAll()
 	string[] cats = Categories()
 	int c = 0
 	While c < cats.Length
-		int slot = 1
-		While slot <= SlotCount
-			GShuf.SetPercent(cats[c], slot, MCM.GetModSettingInt(ModName, "iSlot" + slot + ":" + cats[c]))
-			slot += 1
-		EndWhile
-		MCM.SetModSettingInt(ModName, "iVanilla:" + cats[c], 100 - SlotTotal(cats[c]))
+		If IsPick(cats[c])
+			PushPick(cats[c])
+		Else
+			int slot = 1
+			While slot <= SlotCount
+				GShuf.SetPercent(cats[c], slot, MCM.GetModSettingInt(ModName, "iSlot" + slot + ":" + cats[c]))
+				slot += 1
+			EndWhile
+			MCM.SetModSettingInt(ModName, "iVanilla:" + cats[c], 100 - SlotTotal(cats[c]))
+		EndIf
 		c += 1
 	EndWhile
 	GShuf.SetBlankCanvases(MCM.GetModSettingBool(ModName, "bBlankCanvases:Main"))
@@ -111,7 +139,9 @@ Function OnMCMMenuOpen(string asModName)
 	string[] cats = Categories()
 	int c = 0
 	While c < cats.Length
-		MCM.SetModSettingInt(ModName, "iVanilla:" + cats[c], 100 - SlotTotal(cats[c]))
+		If !IsPick(cats[c])
+			MCM.SetModSettingInt(ModName, "iVanilla:" + cats[c], 100 - SlotTotal(cats[c]))
+		EndIf
 		c += 1
 	EndWhile
 	MCM.RefreshMenu()
@@ -131,6 +161,10 @@ Function OnMCMSettingChange(string asModName, string asId)
 	string[] cats = Categories()
 	int c = 0
 	While c < cats.Length
+		If asId == "iPick:" + cats[c]
+			PushPick(cats[c])
+			Return
+		EndIf
 		If asId == "iVanilla:" + cats[c]
 			MCM.SetModSettingInt(ModName, asId, 100 - SlotTotal(cats[c]))
 			MCM.RefreshMenu()

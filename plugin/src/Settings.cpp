@@ -55,6 +55,11 @@ namespace GShuf::Settings
 					if (!slot || *slot < 1 || *slot > kSlotsPerCategory) continue;
 					s_values.categories[section].percent[*slot - 1] = std::clamp(*value, 0, 100);
 					++applied;
+				} else if (key == "ipick") {
+					// A list page: the chosen slot gets everything, 0 means vanilla.
+					auto& percent = s_values.categories[section].percent;
+					for (int i = 0; i < kSlotsPerCategory; ++i) percent[i] = (*value == i + 1) ? 100 : 0;
+					++applied;
 				}
 			}
 			logger::info("settings: applied {} values from {}", applied, a_path.string());
