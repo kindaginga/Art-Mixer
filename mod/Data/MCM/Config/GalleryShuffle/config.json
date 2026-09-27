@@ -9,7 +9,6 @@
     { "type": "spacer", "numLines": 1 },
     { "type": "section", "text": "Options" },
     { "id": "bBlankCanvases:Main", "type": "switcher", "text": "Put art on blank canvases", "help": "When on, empty canvases and frames also receive pack art. Applies when an area loads.", "valueOptions": { "sourceType": "ModSettingBool" } },
-    { "id": "iMenuVideo:Main", "type": "stepper", "text": "Main menu art", "help": "Which pack's main menu video plays. Also available from the list in the corner of the main menu.", "valueOptions": { "options": [ "Vanilla" ], "sourceType": "ModSettingInt" } },
     { "type": "button", "text": "Shuffle layout", "help": "Picks a new arrangement with the same pack shares. It appears when an area loads (fast travel, doors, or loading a save).", "action": { "type": "CallFunction", "form": "GalleryShuffle.esl|800", "function": "Shuffle" } },
     { "type": "button", "text": "Reset all settings", "help": "Sets every pack share to 0 (all vanilla), turns blank canvases off and resets the layout seed.", "action": { "type": "CallFunction", "form": "GalleryShuffle.esl|800", "function": "ResetAll" } }
   ]

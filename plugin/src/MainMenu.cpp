@@ -451,6 +451,12 @@ namespace GShuf::MainMenu
 		}
 		// The main menu opens its video when it is created. Hiding and showing the menu re-creates it with a dead list, so the
 		// engine's own return-to-main-menu sequence is requested instead, the path the game takes when leaving a save.
+		// That sequence ends a running game, so from inside one the choice is only stored for the next menu.
+		auto* ui = RE::UI::GetSingleton();
+		if (!ui || !ui->GetMenuOpen("MainMenu")) {
+			logger::info("mainmenu: choice stored; the menu picks it up when it is next created");
+			return;
+		}
 		s_rebuilding.store(true);
 		F4SE::GetTaskInterface()->AddTask([] {
 			if (auto* game = RE::Main::GetSingleton(); game) {

@@ -140,9 +140,7 @@ public sealed class Writer
         string[] titles = ["Paintings", "Posters", "Signage", "Magazines", "Quest", "PipBoyScreen", "PipBoySkin"];
         string[] pageTitles = ["Paintings", "Posters", "Signage", "Magazines", "Quest", "Pip-Boy screen", "Pip-Boy skin"];
         var pages = new List<object>();
-        var settings = new StringBuilder("[Main]\nbBlankCanvases=0\niSeed=1\niMenuVideo=0\nsPackSignature=\n");
-        var videoOptions = new List<string> { "Vanilla" };
-        videoOptions.AddRange(packs.Where(p => p.Video != null).Select(p => p.Name));
+        var settings = new StringBuilder("[Main]\nbBlankCanvases=0\niSeed=1\nsPackSignature=\n");
         for (var c = 0; c < categories.Length; c++)
         {
             var pick = categories[c].StartsWith("pipboy", StringComparison.Ordinal);
@@ -212,7 +210,6 @@ public sealed class Writer
                 new { type = "spacer", numLines = 1 },
                 new { type = "section", text = "Options" },
                 new { id = "bBlankCanvases:Main", type = "switcher", text = "Put art on blank canvases", help = "When on, empty canvases and frames also receive pack art. Applies when an area loads.", valueOptions = new { sourceType = "ModSettingBool" } },
-                new { id = "iMenuVideo:Main", type = "stepper", text = "Main menu art", help = "Which pack's main menu video plays. Also available from the list in the corner of the main menu.", valueOptions = new { options = videoOptions.ToArray(), sourceType = "ModSettingInt" } },
                 new { type = "button", text = "Shuffle layout", help = "Picks a new arrangement with the same pack shares. It appears when an area loads (fast travel, doors, or loading a save).", action = new { type = "CallFunction", form = "GalleryShuffle.esl|800", function = "Shuffle" } },
                 new { type = "button", text = "Reset all settings", help = "Sets every pack share to 0 (all vanilla), turns blank canvases off and resets the layout seed.", action = new { type = "CallFunction", form = "GalleryShuffle.esl|800", function = "ResetAll" } },
             },

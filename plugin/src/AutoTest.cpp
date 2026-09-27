@@ -22,6 +22,8 @@ namespace GShuf::AutoTest
 		std::string s_menuAction;  // "click": click CONTINUE; "enter": press Enter; empty: none
 		bool s_pickFirst{ true };  // run the box pick before the menu action
 		bool s_anyKey{ true };     // click once as the "press any button" step
+		std::string s_consoleAfterA;  // console command issued in game after stage A
+		int s_pickRow{ 0 };           // row of the box list the menu test picks (0 = Vanilla)
 		int s_idleSeconds{ 200 };  // length of the "idle" menu action
 		std::atomic<bool> s_loadIssued{ false };
 		std::atomic<bool> s_finishIssued{ false };
@@ -251,6 +253,8 @@ namespace GShuf::AutoTest
 			if (key.find("bskipvideos") != std::string::npos) skipVideos = value == "1";
 			if (key.find("smenuaction") != std::string::npos) s_menuAction = Settings::Lower(value);
 			if (key.find("bpickfirst") != std::string::npos) s_pickFirst = value == "1";
+			if (key.find("sconsoleaftera") != std::string::npos) s_consoleAfterA = value;
+			if (key.find("ipickrow") != std::string::npos) s_pickRow = std::stoi(value);
 			if (key.find("banykey") != std::string::npos) s_anyKey = value == "1";
 			if (key.find("iidleseconds") != std::string::npos) s_idleSeconds = std::stoi(value);
 
@@ -311,7 +315,7 @@ namespace GShuf::AutoTest
 					ClickStage(1106.0f, 683.0f);
 					std::this_thread::sleep_for(std::chrono::seconds(2));
 					Console("Screenshot");
-					ClickStage(1106.0f, 631.0f);
+					ClickStage(1106.0f, 631.0f + 26.0f * static_cast<float>(s_pickRow));
 					std::this_thread::sleep_for(std::chrono::seconds(20));
 				}
 				Console("Screenshot");
@@ -345,6 +349,15 @@ namespace GShuf::AutoTest
 			std::this_thread::sleep_for(std::chrono::seconds(10));
 			LogStats("A (initial)");
 			Console("Screenshot");
+			if (!s_consoleAfterA.empty()) {
+				Console(s_consoleAfterA);
+				std::this_thread::sleep_for(std::chrono::seconds(6));
+				RunOnGameThread([] {
+					auto* ui = RE::UI::GetSingleton();
+					logger::info("autotest: after the console command: MainMenu open {}, at main menu {}", ui && ui->GetMenuOpen("MainMenu"), MainMenu::AtMainMenu());
+				});
+				Console("Screenshot");
+			}
 			// Third person with the camera detached and the player turned to face it shows the Pip-Boy on the left forearm.
 			auto heading = std::make_shared<float>(0.0f);
 			RunOnGameThread([heading] { if (auto* player = RE::PlayerCharacter::GetSingleton(); player) *heading = player->data.angle.z * 57.29578f; });
