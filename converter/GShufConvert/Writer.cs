@@ -209,7 +209,7 @@ public sealed class Writer
                 new { type = "section", text = "Options" },
                 new { id = "bBlankCanvases:Main", type = "switcher", text = "Put art on blank canvases", help = "When on, empty canvases and frames also receive pack art. Applies when an area loads.", valueOptions = new { sourceType = "ModSettingBool" } },
                 new { type = "button", text = "Shuffle layout", help = "Picks a new arrangement with the same pack shares. It appears when an area loads (fast travel, doors, or loading a save).", action = new { type = "CallFunction", form = "GalleryShuffle.esl|800", function = "Shuffle" } },
-                new { type = "button", text = "Reset all settings", help = "Puts every category back on Vanilla at 100 with every pack at 0, both Pip-Boy lists on Vanilla, blank canvases off, the layout seed at 1 and the main menu video on Vanilla.", action = new { type = "CallFunction", form = "GalleryShuffle.esl|800", function = "ResetAll" } },
+                new { type = "button", text = "Reset all settings", help = "Back to defaults: all art vanilla (every pack slider at 0), Pip-Boy screen and skin on Vanilla, blank canvases off, layout seed 1, vanilla main menu video.", action = new { type = "CallFunction", form = "GalleryShuffle.esl|800", function = "ResetAll" } },
             },
             pages,
         };
