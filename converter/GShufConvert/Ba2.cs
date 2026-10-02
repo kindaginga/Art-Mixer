@@ -91,12 +91,44 @@ public sealed class Ba2Archive
         }
     }
 
+    /// <summary>The file paths of a BA2 read from a forward-only stream, skipping everything before the name table.</summary>
+    public static List<string> ReadNames(Stream stream)
+    {
+        using var reader = new BinaryReader(stream, Encoding.Latin1, leaveOpen: true);
+        var magic = Encoding.ASCII.GetString(reader.ReadBytes(4));
+        var version = reader.ReadUInt32();
+        reader.ReadBytes(4); // type
+        var count = reader.ReadUInt32();
+        var nameTableOffset = reader.ReadInt64();
+        if (magic != "BTDX") throw new InvalidDataException("not a BA2 archive");
+        if (version is not (1 or 7 or 8)) throw new InvalidDataException($"unsupported BA2 version {version}");
+        if (nameTableOffset < 24 || count > (nameTableOffset - 24) / 24) throw new InvalidDataException($"a name table at {nameTableOffset} cannot follow {count} records");
+        var skip = nameTableOffset - 24;
+        var buffer = new byte[81920];
+        while (skip > 0)
+        {
+            var read = stream.Read(buffer, 0, (int)Math.Min(buffer.Length, skip));
+            if (read == 0) throw new EndOfStreamException("the BA2 ends before its name table");
+            skip -= read;
+        }
+        var names = new List<string>((int)count);
+        for (var i = 0; i < count; i++)
+        {
+            var length = reader.ReadUInt16();
+            names.Add(Encoding.Latin1.GetString(reader.ReadBytes(length)).Replace('/', '\\'));
+        }
+        return names;
+    }
+
     public bool Contains(string path) => _entries.ContainsKey(path);
 
-    /// <summary>Width and height for a DX10 entry, or null for general entries.</summary>
+    /// <summary>Width and height for a DX10 entry or a DDS file in a general archive, or null when the entry is missing or not a DDS.</summary>
     public (int Width, int Height)? Dimensions(string path)
     {
-        return _entries.TryGetValue(path, out var e) && e is TextureEntry t ? (t.Width, t.Height) : null;
+        if (!_entries.TryGetValue(path, out var e)) return null;
+        if (e is TextureEntry t) return (t.Width, t.Height);
+        var dds = Read(path);
+        return dds.Length >= 20 && dds[0] == 'D' && dds[1] == 'D' && dds[2] == 'S' && dds[3] == ' ' ? (BitConverter.ToInt32(dds, 16), BitConverter.ToInt32(dds, 12)) : null;
     }
 
     /// <summary>Extracts one file; textures are rebuilt as DDS files with a DX10 header.</summary>
@@ -131,6 +163,19 @@ public sealed class Ba2Archive
             }
             default:
                 throw new InvalidOperationException();
+        }
+    }
+
+    /// <summary>Reads every general entry the filter accepts, in file order, through one open stream.</summary>
+    public void ForEachGeneral(Func<string, bool> filter, Action<string, byte[]> action)
+    {
+        using var file = File.OpenRead(_path);
+        foreach (var entry in _entries.Values.OfType<GeneralEntry>().Where(e => filter(e.Path)).OrderBy(e => e.Offset))
+        {
+            file.Position = entry.Offset;
+            var raw = new byte[entry.PackedSize > 0 ? entry.PackedSize : entry.UnpackedSize];
+            file.ReadExactly(raw);
+            action(entry.Path, entry.PackedSize > 0 ? Inflate(raw, entry.UnpackedSize) : raw);
         }
     }
 
@@ -187,6 +232,109 @@ public static class Dds
         var height = (int)BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(12));
         var width = (int)BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(16));
         return (width, height);
+    }
+
+    /// <summary>The part of a texture's top mip level from (x0, y0) to (x1, y1) in pixels, as a DDS with a DX10 header; block
+    /// compressed formats are cut on the 4-pixel block edges inside the rectangle, so no neighbouring picture of a texture
+    /// sheet bleeds in. Null for a format this cannot cut or a rectangle smaller than a block.</summary>
+    public static byte[]? Crop(byte[] data, int x0, int y0, int x1, int y1)
+    {
+        if (data.Length < 128 || BinaryPrimitives.ReadUInt32LittleEndian(data) != 0x20534444) return null;
+        var height = (int)BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(12));
+        var width = (int)BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(16));
+        var formatFlags = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(80));
+        var fourCc = Encoding.ASCII.GetString(data, 84, 4);
+        byte format;
+        var offset = 128;
+        if ((formatFlags & 0x4) != 0 && fourCc == "DX10")
+        {
+            if (data.Length < 148) return null;
+            format = (byte)BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(128));
+            offset = 148;
+        }
+        else if ((formatFlags & 0x4) != 0)
+        {
+            format = fourCc switch
+            {
+                "DXT1" => 71,
+                "DXT2" or "DXT3" => 74,
+                "DXT4" or "DXT5" => 77,
+                "ATI1" or "BC4U" => 80,
+                "BC4S" => 81,
+                "ATI2" or "BC5U" => 83,
+                "BC5S" => 84,
+                _ => 0,
+            };
+        }
+        else if ((formatFlags & 0x40) != 0 && BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(88)) == 32)
+        {
+            // 32-bit RGB(A): red in the low byte is R8G8B8A8, red in the third byte is B8G8R8A8.
+            format = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(92)) switch
+            {
+                0x000000FF => 28,
+                0x00FF0000 => 87,
+                _ => 0,
+            };
+        }
+        else format = 0;
+        if (format == 0 || width <= 0 || height <= 0) return null;
+        var compressed = IsBlockCompressed(format);
+        var unit = compressed ? 4 : 1;
+        x0 = Math.Clamp((x0 + unit - 1) / unit * unit, 0, width);
+        y0 = Math.Clamp((y0 + unit - 1) / unit * unit, 0, height);
+        // A far edge on the texture's own edge keeps a last partial block whole.
+        x1 = x1 >= width ? width : Math.Clamp(x1 / unit * unit, 0, width);
+        y1 = y1 >= height ? height : Math.Clamp(y1 / unit * unit, 0, height);
+        if (x1 <= x0 || y1 <= y0) return null;
+        var unitBytes = compressed ? BlockBytes(format) : BytesPerPixel(format);
+        var rowUnits = (width + unit - 1) / unit;
+        var rowBytes = rowUnits * unitBytes;
+        var cutUnits = (x1 - x0 + unit - 1) / unit;
+        var cutRows = (y1 - y0 + unit - 1) / unit;
+        if (offset + (long)((y1 + unit - 1) / unit) * rowBytes > data.Length) return null;
+        var pixels = new byte[cutUnits * unitBytes * cutRows];
+        for (var row = 0; row < cutRows; row++)
+        {
+            Buffer.BlockCopy(data, offset + (y0 / unit + row) * rowBytes + x0 / unit * unitBytes, pixels, row * cutUnits * unitBytes, cutUnits * unitBytes);
+        }
+        return Build(x1 - x0, y1 - y0, 1, format, false, pixels);
+    }
+
+    /// <summary>A texture's top mip level as RGBA pixels (row by row, 4 bytes each) with its width and height; null for a format
+    /// this cannot read.</summary>
+    public static (byte[] Rgba, int Width, int Height)? DecodeTop(byte[] data)
+    {
+        if (data.Length < 128 || BinaryPrimitives.ReadUInt32LittleEndian(data) != 0x20534444) return null;
+        var height = (int)BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(12));
+        var width = (int)BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(16));
+        var whole = Crop(data, 0, 0, width, height);
+        if (whole == null) return null;
+        var format = (byte)BinaryPrimitives.ReadUInt32LittleEndian(whole.AsSpan(128));
+        var pixels = whole.AsSpan(148).ToArray();
+        var rgba = new byte[width * height * 4];
+        switch (format)
+        {
+            case 28 or 29:
+                pixels.AsSpan(0, rgba.Length).CopyTo(rgba);
+                return (rgba, width, height);
+            case 87 or 91:
+                for (var i = 0; i < rgba.Length; i += 4) (rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3]) = (pixels[i + 2], pixels[i + 1], pixels[i], pixels[i + 3]);
+                return (rgba, width, height);
+        }
+        BCnEncoder.Shared.CompressionFormat? block = format switch
+        {
+            71 or 72 => BCnEncoder.Shared.CompressionFormat.Bc1WithAlpha,
+            74 or 75 => BCnEncoder.Shared.CompressionFormat.Bc2,
+            77 or 78 => BCnEncoder.Shared.CompressionFormat.Bc3,
+            80 or 81 => BCnEncoder.Shared.CompressionFormat.Bc4,
+            83 or 84 => BCnEncoder.Shared.CompressionFormat.Bc5,
+            98 or 99 => BCnEncoder.Shared.CompressionFormat.Bc7,
+            _ => null,
+        };
+        if (block == null) return null;
+        var decoded = new BCnEncoder.Decoder.BcDecoder().DecodeRaw(pixels, width, height, block.Value);
+        for (var i = 0; i < decoded.Length; i++) (rgba[4 * i], rgba[4 * i + 1], rgba[4 * i + 2], rgba[4 * i + 3]) = (decoded[i].r, decoded[i].g, decoded[i].b, decoded[i].a);
+        return (rgba, width, height);
     }
 
     /// <summary>Pixel bytes a DDS with a DX10 header should carry according to its own header.</summary>

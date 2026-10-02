@@ -24,4 +24,7 @@ public sealed class Report
     }
 
     public override string ToString() => _text.ToString();
+
+    /// <summary>A count with its noun in singular or plural form: "1 pack", "2 packs".</summary>
+    public static string Count(int n, string one, string many) => $"{n} {(n == 1 ? one : many)}";
 }

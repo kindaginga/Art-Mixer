@@ -10,7 +10,7 @@
         <group name="Core" type="SelectAll">
           <plugins order="Explicit">
             <plugin name="Gallery Shuffle core">
-              <description>Installs the F4SE plugin (one DLL for game versions 1.10.163 through 1.11.240), the GalleryShuffle.esl quest, the MCM menu and the vanilla art catalog. Convert your art mods with the Gallery Shuffle Converter afterwards.</description>
+              <description>Installs the F4SE plugin (one DLL for game versions 1.10.163, 1.10.984, 1.11.169 and 1.11.240), the GalleryShuffle.esl quest, the MCM menu and the vanilla art catalog. Convert your art mods with the Gallery Shuffle Converter afterwards.</description>
               <files>
                 <folder source="Data" destination="" priority="0" />
               </files>

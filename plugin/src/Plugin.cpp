@@ -1,13 +1,17 @@
 #include "Plugin.h"
 
+#include "ApplyNow.h"
 #include "AutoTest.h"
 #include "Catalog.h"
 #include "Distributor.h"
 #include "Engine.h"
+#include "Inventory.h"
+#include "LoadScreens.h"
 #include "MainMenu.h"
 #include "Packs.h"
 #include "Papyrus.h"
 #include "Settings.h"
+#include "Sounds.h"
 
 namespace
 {
@@ -52,11 +56,31 @@ namespace
 		if (!a_message) return;
 		switch (a_message->type) {
 		case F4SE::MessagingInterface::kGameDataReady:
+			GShuf::Catalog::ResolveForms();
+			GShuf::Packs::OnGameDataReady();
+			GShuf::Distributor::ApplyTextureSets();
+			GShuf::Distributor::ApplyBounds();
+			if (!GShuf::AutoTest::Skips("pickmodels")) GShuf::Distributor::ApplyPickModels();
+			if (!GShuf::AutoTest::Skips("inventory")) GShuf::Inventory::OnGameDataReady();
+			if (!GShuf::AutoTest::Skips("loadscreens")) GShuf::LoadScreens::OnGameDataReady();
 			GShuf::MainMenu::OnGameDataReady();
 			GShuf::AutoTest::OnGameDataReady();
 			break;
+		case F4SE::MessagingInterface::kPostSaveGame:
+			GShuf::ApplyNow::OnPostSaveGame(a_message->data, a_message->dataLen);
+			break;
+		case F4SE::MessagingInterface::kPreLoadGame:
+			// "New layout on every load": the save's areas load with the next seed; Apply now's own reload keeps the current one.
+			if (!GShuf::ApplyNow::OnPreLoadGame() && GShuf::Settings::Get().newLayoutEachLoad) {
+				GShuf::Settings::SetSeed(GShuf::Settings::Seed() + 1);
+				GShuf::Settings::Save();
+				GShuf::Distributor::Reapply();
+				logger::info("new layout on every load: seed {}", GShuf::Settings::Seed());
+			}
+			break;
 		case F4SE::MessagingInterface::kPostLoadGame:
-			GShuf::AutoTest::OnPostLoadGame();
+			// The message's data pointer carries the load result itself.
+			GShuf::AutoTest::OnPostLoadGame(reinterpret_cast<std::uintptr_t>(a_message->data) != 0);
 			break;
 		default:
 			break;
@@ -84,8 +108,13 @@ bool Plugin::Initialize(const F4SE::LoadInterface* a_f4se)
 	if (engine) {
 		GShuf::Engine::InstallHooks(&GShuf::Distributor::OnModelLoaded);
 		GShuf::Engine::InstallReferenceHook(&GShuf::Distributor::OnReference3D);
+		GShuf::Engine::InstallModelHook(&GShuf::Distributor::ChooseModel);
+		if (!GShuf::AutoTest::Skips("textures")) GShuf::Engine::InstallTextureHook(&GShuf::Distributor::ChooseTexture);
 	}
+	if (!GShuf::AutoTest::Skips("sounds")) GShuf::Sounds::Install();
+	if (!GShuf::AutoTest::Skips("inventory")) GShuf::Inventory::Install();
 	GShuf::MainMenu::Install();
+	if (engine) GShuf::Engine::InstallMovieHook(&GShuf::MainMenu::RedirectMovie);
 	GShuf::MainMenu::LoadFromPacks();
 	GShuf::AutoTest::Configure();
 

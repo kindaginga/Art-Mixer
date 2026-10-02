@@ -51,6 +51,48 @@ Copy-Item (Join-Path $root "mod\Gallery Shuffle - Read Me.txt") $conv
 Copy-Item (Join-Path $root "converter\external\MaterialLib\LICENSE") (Join-Path $conv "LICENSE-MaterialLib.txt")
 Get-ChildItem $conv -Filter "*.pdb" | Remove-Item
 
+# Notices for the third-party code built into the plugin and the converter: MIT asks for its notice in every copy; fmt's license
+# exempts compiled code, Boost's exempts machine code, and BCnEncoder.NET is taken under the Unlicense.
+$utf8 = New-Object System.Text.UTF8Encoding($false)
+$share = Join-Path $root "plugin\build\vs2026\vcpkg_installed\x64-windows-static-md\share"
+$csproj = [IO.File]::ReadAllText((Join-Path $root "converter\GShufConvert\GShufConvert.csproj"))
+$sharpVersion = [regex]::Match($csproj, 'Include="SharpCompress" Version="([^"]+)"').Groups[1].Value
+$nuspec = [IO.File]::ReadAllText((Join-Path $env:USERPROFILE ".nuget\packages\sharpcompress\$sharpVersion\sharpcompress.nuspec"))
+$sharpCopyright = [regex]::Match($nuspec, '<copyright>([^<]+)</copyright>').Groups[1].Value
+if (-not $sharpCopyright) { throw "SharpCompress $sharpVersion names no copyright holder" }
+$mitBody = @"
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+"@
+$notices = New-Object System.Collections.Generic.List[string]
+$notices.Add("Third-party code in Gallery Shuffle")
+function Add-Notice([string] $Title, [string] $Text) {
+    $script:notices.Add(""); $script:notices.Add("=" * 72); $script:notices.Add($Title); $script:notices.Add("=" * 72); $script:notices.Add($Text.Trim())
+}
+Add-Notice "CommonLibF4 (in GalleryShuffle.dll)" ([IO.File]::ReadAllText((Join-Path $root "plugin\external\CommonLibF4RD\LICENSE")))
+foreach ($package in 'nlohmann-json', 'spdlog', 'rsm-mmio', 'zydis', 'zycore') {
+    Add-Notice "$package (in GalleryShuffle.dll)" ([IO.File]::ReadAllText((Join-Path $share "$package\copyright")))
+}
+Add-Notice "MaterialLib (in the converter)" ([IO.File]::ReadAllText((Join-Path $root "converter\external\MaterialLib\LICENSE")))
+Add-Notice "SharpCompress $sharpVersion (in the converter)" ("MIT License`n`n$sharpCopyright`n`n" + $mitBody)
+Add-Notice "BCnEncoder.NET (in the converter)" "https://github.com/Nominom/BCnEncoder.NET, offered under MIT or the Unlicense; used here under the Unlicense."
+[IO.File]::WriteAllText((Join-Path $conv "THIRD-PARTY-NOTICES.txt"), (($notices -join "`r`n") + "`r`n"), $utf8)
+
 # Core mod (FOMOD), with the converter inside as a tool (Tools\GalleryShuffle) so managers can launch it.
 New-Item -ItemType Directory -Force (Join-Path $core "Data\F4SE\Plugins"), (Join-Path $core "fomod"), (Join-Path $core "Data\Tools\GalleryShuffle") | Out-Null
 Copy-Item (Join-Path $conv "*") (Join-Path $core "Data\Tools\GalleryShuffle\") -Recurse
@@ -59,9 +101,9 @@ Copy-Item (Join-Path $root "mod\Data\GalleryShuffle.esl") (Join-Path $core "Data
 Copy-Item (Join-Path $root "mod\Data\Scripts") (Join-Path $core "Data\Scripts") -Recurse
 Copy-Item (Join-Path $root "mod\Data\MCM") (Join-Path $core "Data\MCM") -Recurse
 Copy-Item (Join-Path $root "mod\Data\GShuf") (Join-Path $core "Data\GShuf") -Recurse
-Copy-Item (Join-Path $root "mod\Data\Interface") (Join-Path $core "Data\Interface") -Recurse
 Copy-Item (Join-Path $root "mod\fomod\*") (Join-Path $core "fomod\")
 Copy-Item (Join-Path $root "mod\Gallery Shuffle - Read Me.txt") $core
+Copy-Item (Join-Path $conv "THIRD-PARTY-NOTICES.txt") $core
 Write-Zip $core (Join-Path $dist "GalleryShuffle-$Version.zip")
 
 # Standalone converter

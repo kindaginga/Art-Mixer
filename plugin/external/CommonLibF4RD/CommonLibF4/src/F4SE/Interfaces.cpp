@@ -120,15 +120,11 @@ namespace F4SE
 
 	bool SerializationInterface::GetNextRecordInfo(std::uint32_t& a_type, std::uint32_t& a_version, std::uint32_t& a_length) const
 	{
-		const auto success =
-			GetProxy().GetNextRecordInfo(
-				std::addressof(a_type),
-				std::addressof(a_version),
-				std::addressof(a_length));
-		if (!success) {
-			log::warn("failed to get next record info"sv);
-		}
-		return success;
+		// False marks the end of the plugin's records, the normal end of every read loop.
+		return GetProxy().GetNextRecordInfo(
+			std::addressof(a_type),
+			std::addressof(a_version),
+			std::addressof(a_length));
 	}
 
 	std::uint32_t SerializationInterface::ReadRecordData(void* a_buf, std::uint32_t a_length) const

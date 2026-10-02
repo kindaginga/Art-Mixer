@@ -14,10 +14,11 @@ namespace RE::BSScript
 			initialized = false;
 		}
 
-		auto lock = reinterpret_cast<std::uintptr_t>(lockStructure) & ~static_cast<std::uintptr_t>(1);
+		// Decrements the count at the start of the lock structure the object points at.
+		const auto lock = reinterpret_cast<std::uintptr_t>(lockStructure) & ~static_cast<std::uintptr_t>(1);
 		if (lock) {
-			stl::atomic_ref l{ lock };
-			--l;
+			stl::atomic_ref count{ *reinterpret_cast<volatile std::int32_t*>(lock) };
+			--count;
 		}
 	}
 	ObjectTypeInfo* Object::GetTypeInfo()

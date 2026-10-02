@@ -100,7 +100,7 @@ namespace RE
 		void unlock_write()
 		{
 			stl::atomic_ref lock{ _lock };
-			if (_lock == 0x80000001) {
+			if (lock == 0x80000001) {
 				_writerThread = 0;
 				lock.exchange(0);
 			} else {

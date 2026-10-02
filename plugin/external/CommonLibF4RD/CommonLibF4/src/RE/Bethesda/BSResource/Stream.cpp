@@ -117,10 +117,9 @@ namespace RE
 			if (readFullHint) {
 				_flags |= kBuffered | kFullReadHint;
 			}
-			static std::atomic_ref myflags{ flags };
-			uint32_t old_flags = flags;
+			std::atomic_ref myflags{ flags };
+			uint32_t old_flags = myflags;
 			while (!myflags.compare_exchange_strong(old_flags, (old_flags | _flags))) {
-				old_flags = flags;
 			}
 			return DoOpen();
 		}

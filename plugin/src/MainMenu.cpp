@@ -1,5 +1,8 @@
 #include "MainMenu.h"
 
+#include "ApplyNow.h"
+#include "Distributor.h"
+#include "LoadScreens.h"
 #include "Packs.h"
 #include "Settings.h"
 
@@ -18,19 +21,58 @@ namespace GShuf::MainMenu
 		std::vector<Option> s_options;
 		int s_selected{ 0 };
 		std::atomic<int> s_opens{ 0 };
-		std::atomic<int> s_inputLogs{ 0 };
-		std::atomic<int> s_messageLogs{ 0 };
-		std::atomic<int> s_cursorX{ -1 };
-		std::atomic<int> s_cursorY{ -1 };
-		std::atomic<int> s_cursorLogs{ 0 };
 		std::atomic<bool> s_loopOpen{ false };    // the menu loop video has been opened: the intro is over and the real menu is up
-		std::atomic<bool> s_registered{ false };  // the picker menu is registered with the UI
 		std::atomic<bool> s_skipStartup{ false };
-		std::atomic<bool> s_pickerEnabled{ true };
+		std::atomic<bool> s_pickerEnabled{ true };  // the list entry is added to the main menu (the autotest baseline turns it off)
 		std::atomic<bool> s_rebuilding{ false };  // a pick is re-creating MainMenu  // autotest: startup videos are refused so the menu comes up at once
-		constexpr auto kPickerMenu = "GShufPicker"sv;
-		void ShowPicker(bool a_show);
+		void AttachToMenu();
 		std::vector<std::string> s_optionIds;
+
+		// The executable names the menu theme by one fixed path; the menu plays whatever file that text names when it starts
+		// the theme, so a pack's theme is chosen by rewriting the text in place (a shorter path ends at its terminator).
+		constexpr std::string_view kThemePath{ "\\Data\\Music\\Special\\MUS_MainTheme.xwm" };
+		char* s_themeText{ nullptr };
+
+		// Finds the theme path text in the executable's read-only data; null unless it occurs exactly once.
+		char* FindThemeText()
+		{
+			const auto base = reinterpret_cast<std::uint8_t*>(GetModuleHandleW(nullptr));
+			const auto dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+			const auto nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(base + dos->e_lfanew);
+			const auto* section = IMAGE_FIRST_SECTION(nt);
+			char* found = nullptr;
+			int count = 0;
+			for (unsigned i = 0; i < nt->FileHeader.NumberOfSections; ++i, ++section) {
+				if (std::strncmp(reinterpret_cast<const char*>(section->Name), ".rdata", 6) != 0) continue;
+				auto* begin = reinterpret_cast<char*>(base + section->VirtualAddress);
+				const std::string_view data(begin, section->Misc.VirtualSize);
+				for (auto pos = data.find(kThemePath); pos != std::string_view::npos; pos = data.find(kThemePath, pos + 1)) {
+					if (pos + kThemePath.size() < data.size() && data[pos + kThemePath.size()] == '\0' && (pos == 0 || data[pos - 1] == '\0')) {
+						found = begin + pos;
+						++count;
+					}
+				}
+			}
+			if (count != 1) logger::warn("mainmenu: menu theme path found {} times in the executable; theme packs disabled", count);
+			return count == 1 ? found : nullptr;
+		}
+
+		// Points the menu theme at a file relative to Data\Music, or back at the game's own theme when empty.
+		void SetTheme(const std::string& a_music)
+		{
+			if (!s_themeText) return;
+			const auto text = a_music.empty() ? std::string(kThemePath) : "\\Data\\Music\\" + a_music;
+			if (text.size() > kThemePath.size()) {
+				logger::warn("mainmenu: theme path '{}' is longer than the game's own; the vanilla theme stays", text);
+				return;
+			}
+			DWORD old = 0;
+			if (!VirtualProtect(s_themeText, kThemePath.size() + 1, PAGE_READWRITE, &old)) return;
+			std::memset(s_themeText, 0, kThemePath.size() + 1);
+			std::memcpy(s_themeText, text.data(), text.size());
+			VirtualProtect(s_themeText, kThemePath.size() + 1, old, &old);
+			logger::info("mainmenu: menu theme -> '{}'", text);
+		}
 
 		// The chosen pack id lives in the plugin's own state file, since the main menu runs no Papyrus.
 		[[nodiscard]] std::filesystem::path StatePath()
@@ -91,7 +133,8 @@ namespace GShuf::MainMenu
 				s_loopOpen.store(true);
 				F4SE::GetTaskInterface()->AddTask([] {
 					auto* ui = RE::UI::GetSingleton();
-					if (s_registered.load() && ui && ui->GetMenuOpen("MainMenu")) ShowPicker(true);
+					if (ui && ui->GetMenuOpen("MainMenu")) AttachToMenu();
+					if (ui && ui->GetMenuOpen("MainMenu")) ApplyNow::OnMainMenuReady();
 				});
 			}
 			return result;
@@ -126,176 +169,351 @@ namespace GShuf::MainMenu
 			return false;
 		}
 
-		// The drop-up list drawn over the main menu; its SWF calls BGSCodeObj.onSelect(index).
-		class PickerMenu : public RE::GameMenuBase
+		// The entry this plugin adds to the main menu list; the menu's own press handler ignores an index it does not know.
+		constexpr int kEntryIndex = 99;
+		constexpr auto kListPath = "root1.Menu_mc.MainPanel_mc.List_mc";
+		constexpr auto kCodeObjPath = "root1.Menu_mc.BGSCodeObj";
+		RE::Scaleform::GFx::Movie* s_listenedMovie{ nullptr };  // the MainMenu movie whose list carries this plugin's listeners
+		std::atomic<int> s_entryLogs{ 0 };
+		bool s_selectorOpen{ false };                             // the list shows the options instead of the game's entries (game thread)
+		std::vector<RE::Scaleform::GFx::Value> s_savedEntries;  // the game's entries while the selector shows
+
+		constexpr auto kEntryText = "MENU ART";
+		constexpr int kBackIndex = 98;     // the selector's BACK row
+		constexpr int kOptionBase = 200;   // the selector's option rows: kOptionBase + option index
+
+		// The current option's name in the list's capitals.
+		[[nodiscard]] std::string EntryLabel()
 		{
-		public:
-			PickerMenu()
-			{
-				// No cursor flags: the engine routes its mouse events to one cursor-using menu only, and that must stay MainMenu
-				// so its list keeps working; the picker takes its own clicks from the cursor position below.
-				menuFlags.set(RE::UI_MENU_FLAGS::kDontHideCursorWhenTopmost);
-				depthPriority = RE::UI_DEPTH_PRIORITY::kMessage;
-				// Copies the render setup of the real main menu so the picker draws in the same layer.
-				if (auto* ui = RE::UI::GetSingleton(); ui) {
-					if (auto main = ui->GetMenu("MainMenu"); main) {
-						customRendererName = main->customRendererName;
-						logger::info("mainmenu: MainMenu flags {:#x} depth {} renderer '{}'", main->menuFlags.underlying(), static_cast<int>(main->depthPriority.underlying()), main->customRendererName.c_str() ? main->customRendererName.c_str() : "");
-					}
-				}
-				auto* manager = RE::BSScaleformManager::GetSingleton();
-				const bool loaded = manager && manager->LoadMovieEx(*this, "Interface/GShufPicker.swf", "root1");
-				logger::info("mainmenu: picker movie loaded {}, menuObj object {}", loaded, menuObj.IsObject());
-				// LoadMovieEx leaves the SWF without BGSCodeObj, so the bridge object is built here: this menu is the function handler.
-				if (loaded && uiMovie && menuObj.IsObject()) {
-					RE::Scaleform::GFx::Value codeObj, onSelect, check;
-					uiMovie->CreateObject(&codeObj);
-					uiMovie->CreateFunction(&onSelect, this, reinterpret_cast<void*>(0));
-					const bool setFn = codeObj.SetMember("onSelect", onSelect);
-					const bool setObj = menuObj.SetMember("BGSCodeObj", codeObj);
-					const bool readable = menuObj.GetMember("BGSCodeObj", &check) && check.IsObject();
-					logger::info("mainmenu: picker BGSCodeObj set {} (onSelect {}), readable {}", setObj, setFn, readable);
-				}
-				if (loaded) PushOptions();
-			}
-
-			void MapCodeObjectFunctions() override
-			{
-				MapCodeMethodToASFunction("onSelect", 0);
-			}
-
-			// Keys and gamepad buttons belong to the main menu underneath; mouse events go to the engine's own handler so clicks reach the movie.
-			// The engine cursor position as stage coordinates of the picker movie; false when unknown.
-			bool CursorStage(double& a_x, double& a_y) const
-			{
-				const auto [px, py] = CursorPos();
-				RECT client{};
-				HWND window = FindWindowW(nullptr, L"Fallout4");
-				if (px < 0 || !window || !GetClientRect(window, &client) || client.right <= 0 || client.bottom <= 0) return false;
-				a_x = px * 1280.0 / client.right;
-				a_y = py * 720.0 / client.bottom;
-				return true;
-			}
-
-			// True when the engine cursor is over the box or its open list; the SWF does the hit test in stage coordinates.
-			bool CursorOverPicker() const
-			{
-				double x = 0.0, y = 0.0;
-				if (!menuObj.IsObject() || !CursorStage(x, y)) return false;
-				RE::Scaleform::GFx::Value args[2]{ RE::Scaleform::GFx::Value(x), RE::Scaleform::GFx::Value(y) };
-				RE::Scaleform::GFx::Value result;
-				return const_cast<RE::Scaleform::GFx::Value&>(menuObj).Invoke("HitTest", &result, args, 2) && result.IsBoolean() && result.GetBoolean();
-			}
-
-			void CallWithCursor(const char* a_function)
-			{
-				double x = 0.0, y = 0.0;
-				if (!menuObj.IsObject() || !CursorStage(x, y)) return;
-				RE::Scaleform::GFx::Value args[2]{ RE::Scaleform::GFx::Value(x), RE::Scaleform::GFx::Value(y) };
-				menuObj.Invoke(a_function, nullptr, args, 2);
-			}
-
-			// Keys and gamepad buttons belong to the main menu underneath. Cursor positions are recorded and drive the row
-			// highlight; a left button press is taken only when the cursor is over the box, and the SWF acts on it directly.
-			bool ShouldHandleEvent(const RE::InputEvent* a_event) override
-			{
-				if (!a_event || a_event->device != RE::INPUT_DEVICE::kMouse) return false;
-				if (a_event->eventType == RE::INPUT_EVENT_TYPE::kCursorMove) {
-					const auto* move = static_cast<const RE::CursorMoveEvent*>(a_event);
-					const bool changed = move->cursorPosX != s_cursorX.load() || move->cursorPosY != s_cursorY.load();
-					s_cursorX.store(move->cursorPosX);
-					s_cursorY.store(move->cursorPosY);
-					if (changed) CallWithCursor("Hover");
-					return false;
-				}
-				if (a_event->eventType != RE::INPUT_EVENT_TYPE::kButton) return false;
-				const auto* button = static_cast<const RE::ButtonEvent*>(a_event);
-				// A held button repeats its event every frame; only the first press of the left button counts.
-				const bool press = button->idCode == 0 && button->QJustPressed();
-				const bool over = press && CursorOverPicker();
-				if (press && s_inputLogs.fetch_add(1) < 40) logger::info("mainmenu: picker left press, over the box {}", over);
-				return over;
-			}
-
-			void HandleEvent(const RE::ButtonEvent* a_event) override
-			{
-				if (!a_event || a_event->device != RE::INPUT_DEVICE::kMouse || a_event->idCode != 0 || !a_event->QJustPressed()) return;
-				CallWithCursor("Click");
-			}
-
-			// Scaleform mouse events are posted to the top menu and swallowed by the base handler; passing them on keeps
-			// MainMenu's own list clickable. The picker takes its clicks through the button event path above instead.
-			RE::UI_MESSAGE_RESULTS ProcessMessage(RE::UIMessage& a_message) override
-			{
-				const auto type = *a_message.type;
-				if (s_messageLogs.fetch_add(1) < 24) logger::info("mainmenu: picker message type {}", static_cast<int>(type));
-				if (type == RE::UI_MESSAGE_TYPE::kScaleformEvent) return RE::UI_MESSAGE_RESULTS::kPassOn;
-				return RE::GameMenuBase::ProcessMessage(a_message);
-			}
-
-			void Call(const Params& a_params) override
-			{
-				// userData carries the function id given at creation; the ActionScript arguments follow.
-				const auto id = reinterpret_cast<std::uintptr_t>(a_params.userData);
-				const auto* arg = a_params.argCount >= 1 ? &a_params.args[0] : nullptr;
-				if (!arg || !(arg->IsNumber() || arg->IsInt() || arg->IsUInt())) {
-					logger::info("mainmenu: picker call id {} with {} arguments, ignored", id, a_params.argCount);
-					return;
-				}
-				const auto index = arg->IsNumber() ? static_cast<int>(arg->GetNumber()) : arg->IsInt() ? arg->GetInt() : static_cast<int>(arg->GetUInt());
-				logger::info("mainmenu: picker call id {} index {}", id, index);
-				if (id == 0) Select(index);
-			}
-
-			void PushOptions()
-			{
-				if (!uiMovie || !menuObj.IsObject()) return;
-				RE::Scaleform::GFx::Value names;
-				uiMovie->CreateArray(&names);
-				std::scoped_lock lock(s_mutex);
-				for (const auto& option : s_options) {
-					names.PushBack(RE::Scaleform::GFx::Value(option.name.c_str()));
-				}
-				RE::Scaleform::GFx::Value args[2]{ names, RE::Scaleform::GFx::Value(s_selected) };
-				const bool ok = menuObj.Invoke("SetOptions", nullptr, args, 2);
-				logger::info("mainmenu: picker SetOptions with {} names -> {}", s_options.size(), ok);
-			}
-
-			static RE::IMenu* Create(const RE::UIMessage&) { return new PickerMenu(); }
-		};
-
-		// Neither the press-start page nor a re-created menu has MainMenu's cursor on (its own key-press transition sets it),
-		// and the picker never counts as the top menu, so MainMenu is given the cursor flag and the engine refreshes the cursor.
-		void ShowMainMenuCursor()
-		{
-			auto* ui = RE::UI::GetSingleton();
-			if (!ui || !ui->GetMenuOpen(kPickerMenu.data())) return;
-			auto main = ui->GetMenu("MainMenu");
-			if (!main) return;
-			LogMenuState("loop open, before cursor flag");
-			// A menu re-created by a pick comes back with a LoadingMenu left open at MainMenu's depth, which swallows the list's input.
-			if (s_rebuilding.exchange(false)) {
-				for (const char* stray : { "LoadingMenu", "HUDMenu" }) {
-					if (ui->GetMenuOpen(stray)) logger::info("mainmenu: {} open after the rebuild", stray);
-				}
-			}
-			const bool had = main->menuFlags.all(RE::UI_MENU_FLAGS::kUsesCursor);
-			// Both cursor flags, as MainMenu's own key-press transition sets them: the update flag routes mouse events to its movie.
-			main->menuFlags.set(RE::UI_MENU_FLAGS::kUsesCursor, RE::UI_MENU_FLAGS::kUpdateUsesCursor);
-			ui->RefreshCursor();
-			logger::info("mainmenu: MainMenu cursor flag was {}, cursor refreshed; cursor menu open {}", had, ui->GetMenuOpen(RE::CursorMenu::MENU_NAME));
+			std::scoped_lock lock(s_mutex);
+			std::string name = s_selected >= 0 && s_selected < static_cast<int>(s_options.size()) ? s_options[s_selected].name : "Vanilla";
+			for (auto& c : name) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+			return name;
 		}
 
-		void ShowPicker(bool a_show)
+		// The main menu's list object, or an undefined value when the menu or its list is not up.
+		[[nodiscard]] RE::Scaleform::GFx::Value MenuList(RE::Scaleform::GFx::Movie** a_movie = nullptr)
 		{
-			if (auto* queue = RE::UIMessageQueue::GetSingleton(); queue) {
-				queue->AddMessage(RE::BSFixedString(kPickerMenu.data()), a_show ? RE::UI_MESSAGE_TYPE::kShow : RE::UI_MESSAGE_TYPE::kHide);
+			RE::Scaleform::GFx::Value list;
+			auto* ui = RE::UI::GetSingleton();
+			auto main = ui ? ui->GetMenu("MainMenu") : nullptr;
+			if (!main || !main->uiMovie) return list;
+			if (a_movie) *a_movie = main->uiMovie.get();
+			if (!main->uiMovie->GetVariable(&list, kListPath) || !list.IsObject()) return RE::Scaleform::GFx::Value();
+			return list;
+		}
+
+		// One list entry as the forEach scan saw it.
+		struct ScannedEntry
+		{
+			std::size_t position{ 0 };
+			std::string text;
+			int index{ -1 };
+			RE::Scaleform::GFx::Value object;
+		};
+		std::vector<ScannedEntry> s_scanned;
+
+		// Receives (item, position, array) from Array.forEach and records the item.
+		class ScanHandler : public RE::Scaleform::GFx::FunctionHandler
+		{
+		public:
+			void Call(const Params& a_params) override
+			{
+				if (a_params.argCount < 2 || !a_params.args[0].IsObject()) return;
+				ScannedEntry item;
+				const auto& at = a_params.args[1];
+				item.position = static_cast<std::size_t>(at.IsInt() ? at.GetInt() : at.IsUInt() ? static_cast<int>(at.GetUInt()) : at.IsNumber() ? static_cast<int>(at.GetNumber()) : 0);
+				RE::Scaleform::GFx::Value text, index;
+				if (a_params.args[0].GetMember("text", &text) && text.IsString()) item.text = text.GetString();
+				if (a_params.args[0].GetMember("index", &index)) item.index = index.IsInt() ? index.GetInt() : index.IsUInt() ? static_cast<int>(index.GetUInt()) : index.IsNumber() ? static_cast<int>(index.GetNumber()) : -1;
+				item.object = a_params.args[0];
+				s_scanned.push_back(std::move(item));
 			}
-			if (!a_show) return;
-			std::thread([] {
-				std::this_thread::sleep_for(std::chrono::milliseconds(500));
-				F4SE::GetTaskInterface()->AddTask([] { ShowMainMenuCursor(); });
-			}).detach();
+		};
+		ScanHandler* s_scanHandler{ nullptr };
+
+		// The list's entries in order, read through Array.forEach (CommonLib wraps no element accessor).
+		[[nodiscard]] std::vector<ScannedEntry> ScanEntries(RE::Scaleform::GFx::Movie* a_movie, RE::Scaleform::GFx::Value& a_entries)
+		{
+			s_scanned.clear();
+			if (!s_scanHandler) s_scanHandler = new ScanHandler();
+			RE::Scaleform::GFx::Value fn;
+			a_movie->CreateFunction(&fn, s_scanHandler, nullptr);
+			a_entries.Invoke("forEach", nullptr, &fn, 1);
+			return std::move(s_scanned);
+		}
+
+		// Puts this plugin's entry into the list before $CREW (else before $QUIT, else last) unless it is already there, and keeps its label current.
+		void EnsureEntry()
+		{
+			RE::Scaleform::GFx::Movie* movie = nullptr;
+			auto list = MenuList(&movie);
+			RE::Scaleform::GFx::Value entries;
+			if (!list.IsObject() || !list.GetMember("entryList", &entries) || !entries.IsArray()) return;
+			if (s_selectorOpen) return;
+			const std::string label = kEntryText;
+			auto scanned = ScanEntries(movie, entries);
+			const auto count = scanned.size();
+			std::size_t crew = count, quit = count;
+			for (auto& item : scanned) {
+				if (item.index == kEntryIndex) {
+					if (item.text != label) {
+						item.object.SetMember("text", RE::Scaleform::GFx::Value(label.c_str()));
+						list.Invoke("InvalidateData");
+					}
+					return;
+				}
+				if (item.text == "$CREW") crew = item.position;
+				if (item.text == "$QUIT") quit = item.position;
+			}
+			const auto position = crew < count ? crew : quit;
+			RE::Scaleform::GFx::Value entry;
+			movie->CreateObject(&entry);
+			entry.SetMember("text", RE::Scaleform::GFx::Value(label.c_str()));
+			entry.SetMember("index", RE::Scaleform::GFx::Value(kEntryIndex));
+			RE::Scaleform::GFx::Value args[3]{ RE::Scaleform::GFx::Value(static_cast<std::int32_t>(position)), RE::Scaleform::GFx::Value(0), entry };
+			const bool spliced = entries.Invoke("splice", nullptr, args, 3);
+			const bool refreshed = list.Invoke("InvalidateData");
+			if (s_entryLogs.fetch_add(1) < 20) logger::info("mainmenu: list entry '{}' inserted at position {} of {} ({}); splice {}, refresh {}", label, position + 1, count + 1, crew < count ? "before $CREW" : quit < count ? "before $QUIT" : "last", spliced, refreshed);
+		}
+		void PlayMenuSound(const char* a_function)
+		{
+			auto* ui = RE::UI::GetSingleton();
+			auto main = ui ? ui->GetMenu("MainMenu") : nullptr;
+			RE::Scaleform::GFx::Value codeObj;
+			if (main && main->uiMovie && main->uiMovie->GetVariable(&codeObj, kCodeObjPath) && codeObj.IsObject()) codeObj.Invoke(a_function);
+		}
+
+		// Replaces the list's entries with the given rows (text, index) and shows the first.
+		void ShowRows(RE::Scaleform::GFx::Movie* a_movie, RE::Scaleform::GFx::Value& a_list, RE::Scaleform::GFx::Value& a_entries, std::size_t a_count, const std::vector<RE::Scaleform::GFx::Value>& a_rows)
+		{
+			RE::Scaleform::GFx::Value cut[2]{ RE::Scaleform::GFx::Value(0), RE::Scaleform::GFx::Value(static_cast<std::int32_t>(a_count)) };
+			a_entries.Invoke("splice", nullptr, cut, 2);
+			for (const auto& row : a_rows) a_entries.PushBack(row);
+			a_list.SetMember("selectedIndex", RE::Scaleform::GFx::Value(0));
+			a_list.Invoke("InvalidateData");
+			(void)a_movie;
+		}
+
+		[[nodiscard]] double NumberOf(RE::Scaleform::GFx::Value& a_object, const char* a_member, double a_fallback);
+
+		// The drawn height of a row clip's text, or 0 when the clip or its field is out of reach; the entry field shrinks text that is too long.
+		[[nodiscard]] double RowTextHeight(RE::Scaleform::GFx::Value& a_list, std::uint32_t a_row)
+		{
+			RE::Scaleform::GFx::Value at(a_row), clip, field;
+			if (!a_list.Invoke("GetClipByIndex", &clip, &at, 1) || !clip.IsObject() || !clip.GetMember("textField", &field) || !field.IsObject()) return 0.0;
+			return NumberOf(field, "textHeight", 0.0);
+		}
+
+		// Cuts each selector row's name with "..." ahead of its suffix until the row draws at the height of the BACK row instead of shrinking.
+		void FitSelectorRows(RE::Scaleform::GFx::Value& a_list, const std::vector<RE::Scaleform::GFx::Value>& a_rows, const std::vector<std::string>& a_names, const std::vector<std::string>& a_suffixes)
+		{
+			const auto full = RowTextHeight(a_list, static_cast<std::uint32_t>(a_rows.size() - 1));
+			if (full <= 0.0) return;
+			for (std::size_t i = 0; i + 1 < a_rows.size(); ++i) {
+				std::string name = a_names[i];
+				bool cut = false;
+				for (int tries = 0; tries < 60 && name.size() > 3 && RowTextHeight(a_list, static_cast<std::uint32_t>(i)) < full - 0.5; ++tries) {
+					name.pop_back();
+					while (!name.empty() && name.back() == ' ') name.pop_back();
+					cut = true;
+					const_cast<RE::Scaleform::GFx::Value&>(a_rows[i]).SetMember("text", RE::Scaleform::GFx::Value((name + "..." + a_suffixes[i]).c_str()));
+					a_list.Invoke("InvalidateData");
+				}
+				if (cut && s_entryLogs.load() <= 20) logger::info("mainmenu: selector row {} cut to '{}' (text height {:.1f}, full {:.1f})", i + 1, name + "..." + a_suffixes[i], RowTextHeight(a_list, static_cast<std::uint32_t>(i)), full);
+			}
+		}
+
+		// Swaps the game's entries for one row per option, the current one marked, and BACK; the game's entries are kept for BACK.
+		void OpenSelector()
+		{
+			RE::Scaleform::GFx::Movie* movie = nullptr;
+			auto list = MenuList(&movie);
+			RE::Scaleform::GFx::Value entries;
+			if (!list.IsObject() || !list.GetMember("entryList", &entries) || !entries.IsArray()) return;
+			auto scanned = ScanEntries(movie, entries);
+			s_savedEntries.clear();
+			for (auto& item : scanned) s_savedEntries.push_back(item.object);
+			std::vector<RE::Scaleform::GFx::Value> rows;
+			std::vector<std::string> names, suffixes;
+			{
+				std::scoped_lock lock(s_mutex);
+				for (std::size_t i = 0; i < s_options.size(); ++i) {
+					std::string name = s_options[i].name;
+					for (auto& c : name) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+					names.push_back(name);
+					suffixes.push_back(static_cast<int>(i) == s_selected ? " *" : "");
+					name += suffixes.back();
+					RE::Scaleform::GFx::Value row;
+					movie->CreateObject(&row);
+					row.SetMember("text", RE::Scaleform::GFx::Value(name.c_str()));
+					row.SetMember("index", RE::Scaleform::GFx::Value(kOptionBase + static_cast<std::int32_t>(i)));
+					rows.push_back(row);
+				}
+			}
+			RE::Scaleform::GFx::Value back;
+			movie->CreateObject(&back);
+			back.SetMember("text", RE::Scaleform::GFx::Value("BACK"));
+			back.SetMember("index", RE::Scaleform::GFx::Value(kBackIndex));
+			rows.push_back(back);
+			s_selectorOpen = true;
+			ShowRows(movie, list, entries, scanned.size(), rows);
+			FitSelectorRows(list, rows, names, suffixes);
+			logger::info("mainmenu: selector opened with {} option rows in place of {} entries", rows.size() - 1, scanned.size());
+		}
+
+		// Puts the game's entries back.
+		void CloseSelector()
+		{
+			RE::Scaleform::GFx::Movie* movie = nullptr;
+			auto list = MenuList(&movie);
+			RE::Scaleform::GFx::Value entries;
+			s_selectorOpen = false;
+			if (!list.IsObject() || !list.GetMember("entryList", &entries) || !entries.IsArray()) return;
+			const auto rows = ScanEntries(movie, entries).size();
+			ShowRows(movie, list, entries, rows, s_savedEntries);
+			logger::info("mainmenu: selector closed; {} entries restored", s_savedEntries.size());
+			s_savedEntries.clear();
+		}
+
+		// Acts on a pressed row of this plugin's: the entry opens the selector, BACK closes it, an option row switches to it.
+		void OnRowPressed(int a_index)
+		{
+			if (a_index == kEntryIndex) {
+				PlayMenuSound("PlayOKSound");
+				OpenSelector();
+			} else if (a_index == kBackIndex) {
+				PlayMenuSound("PlayCancelSound");
+				CloseSelector();
+			} else if (a_index >= kOptionBase) {
+				const int option = a_index - kOptionBase;
+				PlayMenuSound("PlayOKSound");
+				if (option == Selected()) {
+					CloseSelector();
+					return;
+				}
+				logger::info("mainmenu: selector row pressed -> option {}", option);
+				s_selectorOpen = false;
+				s_savedEntries.clear();
+				Select(option);
+			}
+		}
+
+		// Receives the list's events: userData 0 is listItemsCreated (the list was rebuilt), 1 is itemPress.
+		class ListHandler : public RE::Scaleform::GFx::FunctionHandler
+		{
+		public:
+			void Call(const Params& a_params) override
+			{
+				const auto id = reinterpret_cast<std::uintptr_t>(a_params.userData);
+				if (id == 0) {
+					EnsureEntry();
+					return;
+				}
+				auto list = MenuList();
+				RE::Scaleform::GFx::Value entry, index;
+				if (!list.IsObject() || !list.GetMember("selectedEntry", &entry) || !entry.IsObject() || !entry.GetMember("index", &index)) return;
+				const int pressed = index.IsInt() ? index.GetInt() : index.IsNumber() ? static_cast<int>(index.GetNumber()) : -1;
+				OnRowPressed(pressed);
+			}
+		};
+		ListHandler* s_listHandler{ nullptr };
+
+		// The number of row clips the list draws, and how many are visible, through the list's own GetClipByIndex.
+		[[nodiscard]] std::pair<int, int> RowClips(RE::Scaleform::GFx::Value& a_list)
+		{
+			int count = 0, visible = 0;
+			for (; count < 64; ++count) {
+				RE::Scaleform::GFx::Value at(static_cast<std::uint32_t>(count)), clip, shown;
+				if (!a_list.Invoke("GetClipByIndex", &clip, &at, 1) || !clip.IsObject()) break;
+				if (clip.GetMember("visible", &shown) && shown.IsBoolean() && shown.GetBoolean()) ++visible;
+			}
+			return { count, visible };
+		}
+		// A number member as double, or the fallback.
+		[[nodiscard]] double NumberOf(RE::Scaleform::GFx::Value& a_object, const char* a_member, double a_fallback)
+		{
+			RE::Scaleform::GFx::Value v;
+			if (!a_object.GetMember(a_member, &v)) return a_fallback;
+			return v.IsNumber() ? v.GetNumber() : v.IsInt() ? v.GetInt() : v.IsUInt() ? v.GetUInt() : a_fallback;
+		}
+
+		// Gives the list one row more than the game built it with, so the added entry pushes nothing out of view. The list's own
+		// SetNumListItems is protected, so the clip is built here as that method builds them, and the rows are spaced to fit the border.
+		void GrowList(RE::Scaleform::GFx::Movie* a_movie, RE::Scaleform::GFx::Value& a_list)
+		{
+			const int rows = static_cast<int>(NumberOf(a_list, "numListItems", 0));
+			const auto [clips, visible] = RowClips(a_list);
+			if (rows <= 0 || clips != rows) {
+				logger::info("mainmenu: list rows {} with {} clips; left as is", rows, clips);
+				return;
+			}
+			RE::Scaleform::GFx::Value holder, first, clip, at(static_cast<std::uint32_t>(0));
+			if (!a_list.Invoke("GetClipByIndex", &first, &at, 1) || !first.IsObject() || !first.GetMember("parent", &holder) || !holder.IsObject()) {
+				logger::warn("mainmenu: the list's row holder or first row is out of reach; the list keeps {} rows", rows);
+				return;
+			}
+			a_movie->CreateObject(&clip, "MainMenuListEntry");
+			if (!clip.IsObject()) {
+				logger::warn("mainmenu: no MainMenuListEntry could be made; the list keeps {} rows", rows);
+				return;
+			}
+			RE::Scaleform::GFx::Value platform, over, press;
+			if (first.GetMember("iPlatform", &platform)) clip.SetMember("iPlatform", platform);
+			clip.SetMember("clipIndex", RE::Scaleform::GFx::Value(static_cast<std::uint32_t>(rows)));
+			bool wired = a_list.GetMember("onEntryRollover", &over) && a_list.GetMember("onEntryPress", &press);
+			if (wired) {
+				RE::Scaleform::GFx::Value hover[2]{ RE::Scaleform::GFx::Value("mouseOver"), over };
+				RE::Scaleform::GFx::Value click[2]{ RE::Scaleform::GFx::Value("click"), press };
+				wired = clip.Invoke("addEventListener", nullptr, hover, 2) && clip.Invoke("addEventListener", nullptr, click, 2);
+			}
+			const bool added = holder.Invoke("addChild", nullptr, &clip, 1);
+			a_list.SetMember("numListItems", RE::Scaleform::GFx::Value(static_cast<std::uint32_t>(rows + 1)));
+			// Rows are stacked clip height plus spacing from the border's top and shown while they fit its height.
+			RE::Scaleform::GFx::Value border;
+			const double clipHeight = NumberOf(first, "height", 0.0);
+			const double spacing = NumberOf(a_list, "verticalSpacing", 0.0);
+			double borderHeight = 0.0;
+			if (a_list.GetMember("border", &border) && border.IsObject()) borderHeight = NumberOf(border, "height", 0.0);
+			const double needed = (rows + 1) * clipHeight + rows * spacing;
+			double newSpacing = spacing;
+			if (clipHeight > 0.0 && borderHeight > 0.0 && needed > borderHeight) {
+				newSpacing = (borderHeight - (rows + 1) * clipHeight) / rows;
+				if (newSpacing >= 0.0) {
+					a_list.SetMember("verticalSpacing", RE::Scaleform::GFx::Value(newSpacing));
+				} else {
+					newSpacing = spacing;
+					border.SetMember("height", RE::Scaleform::GFx::Value(needed));
+					borderHeight = needed;
+				}
+			}
+			logger::info("mainmenu: list rows {} -> {} (clip added {}, handlers wired {}); clip height {:.1f}, spacing {:.1f} -> {:.1f}, border height {:.1f}", rows, rows + 1, added, wired, clipHeight, spacing, newSpacing, borderHeight);
+		}
+		// Hooks the list of the current MainMenu movie once and inserts the entry; a re-created menu is a new movie and gets hooked again.
+		void AttachToMenu()
+		{
+			if (!s_pickerEnabled.load()) return;
+			RE::Scaleform::GFx::Movie* movie = nullptr;
+			auto list = MenuList(&movie);
+			if (!list.IsObject() || !movie) return;
+			if (s_listenedMovie != movie) {
+				if (!s_listHandler) s_listHandler = new ListHandler();
+				RE::Scaleform::GFx::Value onCreated, onPress;
+				movie->CreateFunction(&onCreated, s_listHandler, reinterpret_cast<void*>(0));
+				movie->CreateFunction(&onPress, s_listHandler, reinterpret_cast<void*>(1));
+				RE::Scaleform::GFx::Value created[2]{ RE::Scaleform::GFx::Value("BSScrollingList::listItemsCreated"), onCreated };
+				RE::Scaleform::GFx::Value press[2]{ RE::Scaleform::GFx::Value("BSScrollingList::itemPress"), onPress };
+				const bool a = list.Invoke("addEventListener", nullptr, created, 2);
+				const bool b = list.Invoke("addEventListener", nullptr, press, 2);
+				s_listenedMovie = movie;
+				s_selectorOpen = false;
+				s_savedEntries.clear();
+				logger::info("mainmenu: list listeners attached (items created {}, press {})", a, b);
+				GrowList(movie, list);
+			}
+			EnsureEntry();
+			const auto [clips, visible] = RowClips(list);
+			if (s_entryLogs.load() <= 20) logger::info("mainmenu: list draws {} row clips, {} visible", clips, visible);
 		}
 
 		class MenuSink : public RE::BSTEventSink<RE::MenuOpenCloseEvent>
@@ -307,10 +525,23 @@ namespace GShuf::MainMenu
 				if (std::string_view(name) == "MainMenu") {
 					logger::info("mainmenu: MainMenu {}", a_event.opening ? "opened" : "closed");
 					if (a_event.opening) {
-						if (s_loopOpen.load()) ShowPicker(true);
+						s_rebuilding.store(false);
+						F4SE::GetTaskInterface()->AddTask([] { AttachToMenu(); });
 					} else {
 						s_loopOpen.store(false);
-						ShowPicker(false);
+						s_listenedMovie = nullptr;
+						s_selectorOpen = false;
+						s_savedEntries.clear();
+					}
+				} else if (std::string_view(name) == "LoadingMenu") {
+					// Logs how long each loading screen stays open.
+					static std::chrono::steady_clock::time_point s_loadingSince{};
+					if (a_event.opening) {
+						s_loadingSince = std::chrono::steady_clock::now();
+					} else if (s_loadingSince != std::chrono::steady_clock::time_point{}) {
+						logger::info("loading screen: {:.1f} s", std::chrono::duration<double>(std::chrono::steady_clock::now() - s_loadingSince).count());
+						s_loadingSince = {};
+						LoadScreens::OnLoadingMenuClosed();
 					}
 				}
 				return RE::BSEventNotifyControl::kContinue;
@@ -327,6 +558,7 @@ namespace GShuf::MainMenu
 			return false;
 		}
 		s_originalBinkOpen = reinterpret_cast<BinkOpenFn>(original);
+		s_themeText = FindThemeText();
 		logger::info("mainmenu: BinkOpen hooked (original {})", original);
 		return true;
 	}
@@ -340,14 +572,12 @@ namespace GShuf::MainMenu
 		}
 		ui->RegisterSink<RE::MenuOpenCloseEvent>(&s_sink);
 		if (!s_pickerEnabled.load()) {
-			logger::info("mainmenu: picker disabled by the autotest");
+			logger::info("mainmenu: menu entry disabled by the autotest");
 			return;
 		}
-		ui->RegisterMenu(kPickerMenu.data(), &PickerMenu::Create);
-		s_registered.store(true);
 		const bool mainOpen = ui->GetMenuOpen("MainMenu");
-		logger::info("mainmenu: picker menu registered; MainMenu already open {}, loop video open {}", mainOpen, s_loopOpen.load());
-		if (mainOpen && s_loopOpen.load()) ShowPicker(true);
+		logger::info("mainmenu: menu entry ready; MainMenu already open {}, loop video open {}", mainOpen, s_loopOpen.load());
+		if (mainOpen) AttachToMenu();
 	}
 
 	void SetSkipStartupVideos(bool a_skip)
@@ -372,16 +602,46 @@ namespace GShuf::MainMenu
 		s_options = std::move(a_options);
 		s_optionIds.assign(s_options.size(), "");
 		s_selected = a_selected;
-		s_menuVideo = (a_selected >= 0 && a_selected < static_cast<int>(s_options.size())) ? s_options[a_selected].video : std::string();
+		const bool valid = a_selected >= 0 && a_selected < static_cast<int>(s_options.size());
+		s_menuVideo = valid ? s_options[a_selected].video : std::string();
+		SetTheme(valid ? s_options[a_selected].music : std::string());
+	}
+
+	std::string EntryState()
+	{
+		RE::Scaleform::GFx::Movie* movie = nullptr;
+		auto list = MenuList(&movie);
+		RE::Scaleform::GFx::Value entries;
+		if (!list.IsObject() || !list.GetMember("entryList", &entries) || !entries.IsArray()) return "no main menu list";
+		const auto scanned = ScanEntries(movie, entries);
+		const auto [clips, visible] = RowClips(list);
+		std::string texts;
+		for (const auto& item : scanned) texts += (texts.empty() ? "" : " | ") + item.text;
+		return fmt::format("{} entries ({} row clips, {} visible): {}", scanned.size(), clips, visible, texts);
+	}
+
+	void PressEntry()
+	{
+		OnRowPressed(kEntryIndex);
+	}
+
+	void PressOption(int a_option)
+	{
+		OnRowPressed(kOptionBase + a_option);
 	}
 
 	void LoadFromPacks()
 	{
-		std::vector<Option> options{ { "Vanilla", "" } };
+		// The Vanilla option plays the vanilla pack's copies of the game's own files when the converter made them.
+		const auto* vanilla = Packs::Vanilla();
+		std::vector<Option> options{ { "Vanilla", vanilla && !vanilla->video.empty() ? "Data\\Video\\" + vanilla->video : std::string(), vanilla ? vanilla->music : std::string() } };
 		std::vector<std::string> ids{ "" };
 		for (const auto& pack : Packs::All()) {
-			if (pack.video.empty()) continue;
-			options.push_back({ pack.name, "Data\\Video\\" + pack.video });
+			if (pack.vanilla) continue;
+			const bool menuMovie = std::any_of(pack.movies.begin(), pack.movies.end(), [](const Packs::Movie& m) { return m.category == "mainmenu"; });
+			if (pack.video.empty() && pack.music.empty() && !menuMovie) continue;
+			// A pack without a video or a theme plays the Vanilla option's.
+			options.push_back({ pack.name, pack.video.empty() ? options.front().video : "Data\\Video\\" + pack.video, pack.music.empty() ? options.front().music : pack.music });
 			ids.push_back(pack.id);
 		}
 		const auto saved = LoadStateMenuVideo();
@@ -392,7 +652,38 @@ namespace GShuf::MainMenu
 		SetOptions(std::move(options), selected);
 		std::scoped_lock lock(s_mutex);
 		s_optionIds = std::move(ids);
-		logger::info("mainmenu: {} video options, selected {} ('{}')", s_options.size(), s_selected, saved);
+		logger::info("mainmenu: {} menu options (video, theme or both), selected {} ('{}')", s_options.size(), s_selected, saved);
+	}
+
+	std::string RedirectMovie(std::string_view a_url)
+	{
+		const auto candidates = Packs::MoviesFor(a_url);
+		if (candidates.empty()) return {};
+		const auto& category = candidates.front().second->category;
+		const Packs::Pack* chosen = nullptr;
+		if (category == "mainmenu") {
+			// The main menu's movie comes from the pack picked in the corner box.
+			std::scoped_lock lock(s_mutex);
+			const auto id = s_selected >= 0 && s_selected < static_cast<int>(s_optionIds.size()) ? s_optionIds[s_selected] : std::string();
+			for (const auto& [pack, movie] : candidates) {
+				if (id.empty() ? pack->vanilla : pack->id == id) chosen = pack;
+			}
+		} else {
+			// A list page's pick, or the share's pick for this file under the current layout.
+			auto file = Settings::Lower(a_url);
+			std::replace(file.begin(), file.end(), '/', '\\');
+			chosen = Distributor::RollCategory(category, "movie|" + file, [&](const Packs::Pack& a_pack) {
+				return std::any_of(candidates.begin(), candidates.end(), [&](const auto& a_candidate) { return a_candidate.first == &a_pack; });
+			});
+		}
+		for (const auto& [pack, movie] : candidates) {
+			if (pack == chosen) return movie->file;
+		}
+		// A pack with no copy of the file shows the vanilla pack's.
+		for (const auto& [pack, movie] : candidates) {
+			if (pack->vanilla) return movie->file;
+		}
+		return {};
 	}
 
 	void LogMenuState(const char* a_tag)
@@ -421,10 +712,9 @@ namespace GShuf::MainMenu
 
 	std::pair<int, int> CursorPos()
 	{
-		// The engine's own cursor position in window pixels; the per-frame cursor events stop reaching the picker when
-		// another menu above it takes them (the 1.11 promo banner does), so they are only the fallback.
+		// The engine's own cursor position in window pixels.
 		if (auto* cursor = RE::MenuCursor::GetSingleton(); cursor) return { cursor->cursorPosX, cursor->cursorPosY };
-		return { s_cursorX.load(), s_cursorY.load() };
+		return { -1, -1 };
 	}
 
 	int Selected()
@@ -446,7 +736,8 @@ namespace GShuf::MainMenu
 			if (a_index < 0 || a_index >= static_cast<int>(s_options.size())) return;
 			s_selected = a_index;
 			s_menuVideo = s_options[a_index].video;
-			logger::info("mainmenu: selected {} -> '{}'", s_options[a_index].name, s_menuVideo);
+			SetTheme(s_options[a_index].music);
+			logger::info("mainmenu: selected {} -> video '{}', theme '{}'", s_options[a_index].name, s_menuVideo, s_options[a_index].music);
 			SaveState();
 		}
 		// The main menu opens its video when it is created. Hiding and showing the menu re-creates it with a dead list, so the

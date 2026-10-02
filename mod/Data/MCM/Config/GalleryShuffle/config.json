@@ -6,10 +6,13 @@
   "content": [
     { "type": "text", "text": "<font size='24'>Gallery Shuffle</font>", "html": true },
     { "type": "text", "text": "No art packs are installed yet. Run the Gallery Shuffle Converter on your art mods; it writes the pack files and this menu's pack pages.", "html": false },
+    { "type": "text", "text": "Changes wait until you apply them: press Apply all, or answer Apply all when you leave Gallery Shuffle or the menu. Cancel there puts every setting back to how it was.", "html": false },
     { "type": "spacer", "numLines": 1 },
     { "type": "section", "text": "Options" },
-    { "id": "bBlankCanvases:Main", "type": "switcher", "text": "Put art on blank canvases", "help": "When on, empty canvases and frames also receive pack art. Applies when an area loads.", "valueOptions": { "sourceType": "ModSettingBool" } },
-    { "type": "button", "text": "Shuffle layout", "help": "Picks a new arrangement with the same pack shares. It appears when an area loads (fast travel, doors, or loading a save).", "action": { "type": "CallFunction", "form": "GalleryShuffle.esl|800", "function": "Shuffle" } },
-    { "type": "button", "text": "Reset all settings", "help": "Back to defaults: all art vanilla (every pack slider at 0), Pip-Boy screen and skin on Vanilla, blank canvases off, layout seed 1, vanilla main menu video.", "action": { "type": "CallFunction", "form": "GalleryShuffle.esl|800", "function": "ResetAll" } }
+    { "id": "bBlankCanvases:GShuf_Main", "type": "switcher", "text": "Put art on blank canvases", "help": "When on, empty canvases and frames also receive pack art. Takes effect once you apply your changes.", "valueOptions": { "sourceType": "ModSettingBool" } },
+    { "id": "bNewLayoutEachLoad:GShuf_Main", "type": "switcher", "text": "New layout on every load", "help": "When on, every time a save loads the art gets a new arrangement with the same pack shares. When off (the default), the layout stays as it is until you change a setting or press Shuffle layout. Takes effect once you apply your changes.", "valueOptions": { "sourceType": "ModSettingBool" } },
+    { "type": "button", "text": "Apply all", "help": "Applies every change on these pages: after you confirm, the game saves as GShufApply, returns to the main menu and loads that save, so every change shows at once. Leaving Gallery Shuffle or the menu with changes not applied asks the same; Cancel there puts every setting back to how it was.", "action": { "type": "CallFunction", "form": "GalleryShuffle.esl|800", "function": "ApplyAll" } },
+    { "type": "button", "text": "Shuffle layout", "help": "Picks a new arrangement with the same pack shares. Takes effect once you apply your changes.", "action": { "type": "CallFunction", "form": "GalleryShuffle.esl|800", "function": "Shuffle" } },
+    { "type": "button", "text": "Reset all settings", "help": "Back to defaults: all art vanilla (every pack slider at 0), Pip-Boy screen and skin on Vanilla, blank canvases off, new layout on every load off, layout seed 1, vanilla main menu video. Takes effect once you apply your changes.", "action": { "type": "CallFunction", "form": "GalleryShuffle.esl|800", "function": "ResetAll" } }
   ]
 }

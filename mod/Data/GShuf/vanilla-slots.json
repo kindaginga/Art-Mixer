@@ -1152,14 +1152,6 @@
   "height": 512
  },
  {
-  "material": "props\\comicsandmagazineshighres\\comicnormalspec.bgsm",
-  "category": "magazines",
-  "diffuse": "",
-  "normal": "Props\\ComicsAndMagazinesHighRes\\ComicNormalSpec_n.dds",
-  "width": 0,
-  "height": 0
- },
- {
   "material": "props\\comicsandmagazineshighres\\awesometales\\awesometales1.bgsm",
   "category": "magazines",
   "diffuse": "Props\\ComicsAndMagazinesHighRes\\AwesomeTales\\AwesomeTales1_d.dds",
@@ -5388,8 +5380,8 @@
   "category": "signage",
   "diffuse": "SetDressing\\signage\\SignClutter02Intact_d.dds",
   "normal": "SetDressing\\signage\\SignClutter02Intact_n.dds",
-  "width": 0,
-  "height": 0
+  "width": 256,
+  "height": 1024
  },
  {
   "material": "setdressing\\signage\\signclutter02red.bgsm",
@@ -5966,14 +5958,6 @@
   "normal": "SetDressing\\Signage\\SignWRVR_n.dds",
   "width": 1024,
   "height": 1024
- },
- {
-  "material": "setdressing\\signage\\sign_reebmarina.bgsm",
-  "category": "signage",
-  "diffuse": "SetDressing\\Signage\\Sign_ReebMarina_d.dds",
-  "normal": "SetDressing\\Signage\\Sign_ReebMarina_n.dds",
-  "width": 0,
-  "height": 0
  },
  {
   "material": "setdressing\\signage\\singhazardmat01.bgsm",
