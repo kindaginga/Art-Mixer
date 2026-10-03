@@ -1,10 +1,10 @@
 #include "Packs.h"
 
 #include "Catalog.h"
-#include "Engine.h"
+#include "GameArchives.h"
 #include "Settings.h"
 
-namespace GShuf::Packs
+namespace ADT::Packs
 {
 	namespace
 	{
@@ -13,8 +13,8 @@ namespace GShuf::Packs
 		std::string s_signature;
 		std::vector<Restore> s_restores;
 		std::unordered_map<std::string, std::vector<std::string>> s_swapOwners;  // "form|material" -> the materials the game and converted mods show there
-		std::unordered_map<std::string, std::vector<int>> s_groups;              // category -> each slot's group, as the group's first slot
 		std::vector<std::string> s_sections;                                     // MCM section names of the share categories, in menu order
+		std::unordered_map<std::string, std::vector<const Pack*>> s_slots;       // category -> the packs its slots name, in slot order
 
 		[[nodiscard]] std::optional<float> Number(const nlohmann::json& a_row, const char* a_key)
 		{
@@ -42,9 +42,9 @@ namespace GShuf::Packs
 		s_vanilla = nullptr;
 		s_signature.clear();
 		s_restores.clear();
-		s_groups.clear();
 		s_sections.clear();
-		const auto path = std::filesystem::path("Data") / "GShuf" / "packs.json";
+		s_slots.clear();
+		const auto path = std::filesystem::path("Data") / "ADT" / "packs.json";
 		std::ifstream file(path);
 		if (!file) {
 			logger::warn("packs: no {} (no packs converted yet)", path.string());
@@ -53,30 +53,29 @@ namespace GShuf::Packs
 		// Parses into locals and publishes only a whole file, so a broken file leaves the state of a missing one.
 		std::vector<Pack> packs;
 		std::vector<Restore> restores;
-		std::unordered_map<std::string, std::vector<int>> groups;
 		std::vector<std::string> sections;
+		std::vector<std::vector<std::string>> slotIds;  // per section, the ids of the packs its slots name
 		std::string signature;
+		std::unordered_map<std::string, std::string> gameTextures;  // game texture (relative to Textures, lowercase) -> the archive it is read from
+		std::unordered_map<std::string, std::string> gameModels;    // game model (relative to Meshes, lowercase) -> the archive it is read from
 		try {
 			const auto json = nlohmann::json::parse(file);
 			signature = Str(json, "signature");
-			if (const auto listed = json.find("sections"); listed != json.end() && listed->is_array()) {
-				for (const auto& name : *listed) {
-					if (name.is_string() && !name.get_ref<const std::string&>().empty()) sections.push_back(name.get<std::string>());
+			for (const auto* list : { "gameTextures", "gameModels" }) {
+				for (const auto& [name, archive] : json.value(list, nlohmann::json::object()).items()) {
+					if (!archive.is_string()) continue;
+					auto key = Settings::Lower(name);
+					std::replace(key.begin(), key.end(), '/', '\\');
+					(std::string_view(list) == "gameTextures" ? gameTextures : gameModels).emplace(std::move(key), archive.get<std::string>());
 				}
 			}
-			if (const auto listed = json.find("groups"); listed != json.end() && listed->is_object()) {
-				for (const auto& [category, rows] : listed->items()) {
-					auto& heads = groups[Settings::NormalizeCategory(category)];
-					for (const auto& row : rows) {
-						if (!row.is_array() || row.empty() || !row.front().is_number_integer()) continue;
-						const int head = row.front().get<int>();
-						for (const auto& slot : row) {
-							const int index = slot.is_number_integer() ? slot.get<int>() : 0;
-							if (index < 1 || index > Settings::kSlotsPerCategory) continue;
-							if (heads.size() < static_cast<std::size_t>(index)) heads.resize(static_cast<std::size_t>(index), 0);
-							heads[static_cast<std::size_t>(index - 1)] = head;
-						}
-					}
+			for (const auto& row : json.value("categories", nlohmann::json::array())) {
+				const auto section = Str(row, "section");
+				if (section.empty()) continue;
+				sections.push_back(section);
+				auto& ids = slotIds.emplace_back();
+				for (const auto& id : row.value("packs", nlohmann::json::array())) {
+					if (id.is_string()) ids.push_back(Settings::Lower(id.get<std::string>()));
 				}
 			}
 			for (const auto& row : json.value("restores", nlohmann::json::array())) {
@@ -90,6 +89,7 @@ namespace GShuf::Packs
 				pack.name = Str(row, "name");
 				if (pack.name.empty()) pack.name = pack.id;
 				pack.vanilla = pack.id == "vanilla";
+				pack.page = Settings::NormalizeCategory(Str(row, "page"));
 				pack.video = Str(row, "video");
 				std::replace(pack.video.begin(), pack.video.end(), '/', '\\');
 				for (const auto& movie : row.value("movies", nlohmann::json::array())) {
@@ -119,7 +119,6 @@ namespace GShuf::Packs
 					}
 					image.name = Str(img, "name");
 					image.card = Str(img, "card");
-					if (const auto w = img.find("cardWidth"); w != img.end() && w->is_number()) image.cardWidth = w->get<float>();
 					if (const auto b = img.find("bounds"); b != img.end() && b->is_array() && b->size() == 6) {
 						std::array<std::int16_t, 6> values{};
 						for (std::size_t i = 0; i < 6; ++i) values[i] = static_cast<std::int16_t>((*b)[i].get<int>());
@@ -141,9 +140,16 @@ namespace GShuf::Packs
 		}
 		s_packs = std::move(packs);
 		s_restores = std::move(restores);
-		s_groups = std::move(groups);
-		s_sections = std::move(sections);
 		s_signature = std::move(signature);
+		GameArchives::SetSources(gameTextures, gameModels);
+		for (std::size_t i = 0; i < sections.size(); ++i) {
+			auto& slots = s_slots[Settings::NormalizeCategory(sections[i])];
+			for (const auto& id : slotIds[i]) {
+				const auto pack = std::find_if(s_packs.begin(), s_packs.end(), [&](const Pack& a_pack) { return a_pack.id == id; });
+				if (pack != s_packs.end()) slots.push_back(&*pack);
+			}
+		}
+		s_sections = std::move(sections);
 		s_swapOwners.clear();
 		for (const auto& restore : s_restores) {
 			if (restore.kind != "swap") continue;
@@ -159,26 +165,6 @@ namespace GShuf::Packs
 
 	namespace
 	{
-		// Counts the texture set textures whose engine file id is the hash of their name with and without the Textures folder.
-		void MeasureTextureIDs()
-		{
-			auto* data = RE::TESDataHandler::GetSingleton();
-			if (!data) return;
-			std::size_t names = 0, withFolder = 0, withoutFolder = 0;
-			for (auto* set : data->GetFormArray<RE::BGSTextureSet>()) {
-				if (!set) continue;
-				for (std::size_t i = 0; i < std::size(set->textures); ++i) {
-					const char* name = set->textures[i].textureName.c_str();
-					if (!name || !*name) continue;
-					++names;
-					const auto path = Engine::TexturePath(name);
-					if (set->textureFileIDs[i] == Engine::FileID("textures\\" + path)) ++withFolder;
-					else if (set->textureFileIDs[i] == Engine::FileID(path)) ++withoutFolder;
-				}
-			}
-			logger::info("packs: texture set file ids: {} of {} names hash to their id with the Textures folder, {} without it", withFolder, names, withoutFolder);
-		}
-
 		// The color remapping index most entries of the game's material swaps hold, which is the value of an entry without one.
 		[[nodiscard]] float UnsetSwapColor()
 		{
@@ -250,7 +236,6 @@ namespace GShuf::Packs
 			}
 		}
 		if (resolved > 0) logger::info("packs: {} versions load with the game's own material swap", resolved);
-		MeasureTextureIDs();
 		RestoreGameRecords();
 	}
 
@@ -286,39 +271,7 @@ namespace GShuf::Packs
 
 	std::string Signature()
 	{
-		if (!s_signature.empty()) return s_signature;
-		std::string ids;
-		for (const auto& pack : s_packs) ids += pack.id + ";";
-		return ids.empty() ? "none" : ids;
-	}
-
-	// How much of a pack's art a page holds; the Other replacers page counts every kind.
-	static std::size_t OnPage(const Pack& a_pack, std::string_view a_page)
-	{
-		const auto on = [&](const std::string& a_category) { return a_page == "other" ? a_category.starts_with("other_") : a_category == a_page; };
-		std::size_t count = 0;
-		for (const auto& [category, images] : a_pack.images) {
-			if (on(category)) count += images.size();
-		}
-		for (const auto& movie : a_pack.movies) {
-			if (on(movie.category)) ++count;
-		}
-		return count;
-	}
-
-	std::string MainPage(const Pack& a_pack)
-	{
-		static constexpr std::array<std::string_view, 6> pages{ "paintings", "posters", "signage", "magazines", "quest", "other" };
-		std::string best;
-		std::size_t most = 0;
-		for (const auto page : pages) {
-			const auto count = OnPage(a_pack, page);
-			if (count > most) {
-				most = count;
-				best = page;
-			}
-		}
-		return best;
+		return s_signature;
 	}
 
 	std::vector<const Pack*> PacksWith(std::string_view a_category)
@@ -334,50 +287,11 @@ namespace GShuf::Packs
 		return packs;
 	}
 
-	std::vector<const Pack*> SlotsFor(std::string_view a_category)
+	const std::vector<const Pack*>& SlotsFor(std::string_view a_category)
 	{
-		std::vector<const Pack*> slots;
-		const auto category = Settings::NormalizeCategory(a_category);
-		const bool page = category == "paintings" || category == "posters" || category == "signage" || category == "magazines" || category == "quest" || category == "other";
-		for (const auto& pack : s_packs) {
-			if (pack.vanilla) continue;
-			if (page) {
-				// A page lists the packs whose one slider sits on it.
-				if (MainPage(pack) == category) slots.push_back(&pack);
-				continue;
-			}
-			// A kind lists only the packs of the Other replacers page.
-			if (category.starts_with("other_") && MainPage(pack) != "other") continue;
-			if (category == "loadingscreens") {
-				// Loading screens show a pack's pictures, so every pack with pictures has a share there.
-				const bool pictures = std::any_of(pack.images.begin(), pack.images.end(), [](const auto& entry) {
-					const bool art = entry.first == "paintings" || entry.first == "posters" || entry.first == "signage" || entry.first == "magazines" || entry.first == "quest";
-					return art && std::any_of(entry.second.begin(), entry.second.end(), [](const Image& a_image) {
-						return a_image.slot.empty() || std::string_view("#&%~!").find(a_image.slot[0]) == std::string_view::npos;
-					});
-				});
-				const auto own = pack.images.find(category);
-				const bool items = own != pack.images.end() && !own->second.empty();
-				const bool movies = std::any_of(pack.movies.begin(), pack.movies.end(), [&](const Movie& m) { return m.category == category; });
-				if (pictures || items || movies) slots.push_back(&pack);
-				continue;
-			}
-			const auto it = pack.images.find(category);
-			const bool movies = std::any_of(pack.movies.begin(), pack.movies.end(), [&](const Movie& m) { return m.category == category; });
-			if ((it != pack.images.end() && !it->second.empty()) || movies) slots.push_back(&pack);
-		}
-		return slots;
-	}
-
-	int GroupOf(std::string_view a_category, int a_slot)
-	{
-		const auto category = Settings::NormalizeCategory(a_category);
-		const auto count = static_cast<int>(std::min<std::size_t>(SlotsFor(category).size(), Settings::kSlotsPerCategory));
-		if (a_slot < 1 || a_slot > count) return 0;
-		const auto it = s_groups.find(category);
-		if (it == s_groups.end()) return 1;
-		const auto index = static_cast<std::size_t>(a_slot - 1);
-		return index < it->second.size() && it->second[index] > 0 ? it->second[index] : a_slot;
+		static const std::vector<const Pack*> s_none;
+		const auto it = s_slots.find(Settings::NormalizeCategory(a_category));
+		return it == s_slots.end() ? s_none : it->second;
 	}
 
 	const std::vector<std::string>& Sections()

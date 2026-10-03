@@ -2,14 +2,14 @@ param(
     [Parameter(Mandatory)] [string] $Instance,
     [string] $Profile = "Default",
     [Parameter(Mandatory)] [string] $GameRoot,
-    [string] $PluginLog = "GalleryShuffle.log",
+    [string] $PluginLog = "ArtDistributionTool.log",
     [int] $TimeoutSeconds = 300,
     [int] $CaptureEverySeconds = 0
 )
 # Launches F4SE through MO2 for one instance via the Windows shell, waits for the game to exit, reports the harness results and exits 1 when the run failed.
 $mo2 = "C:\Modding\MO2\ModOrganizer.exe"
 $docs = "$env:USERPROFILE\Documents\My Games\Fallout4\F4SE"
-$harnessIni = "$env:LOCALAPPDATA\ModOrganizer\$Instance\mods\Gallery Shuffle\F4SE\Plugins\GalleryShuffle.ini"
+$harnessIni = "$env:LOCALAPPDATA\ModOrganizer\$Instance\mods\Art Distribution Tool\F4SE\Plugins\ArtDistributionTool.ini"
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 
@@ -97,7 +97,7 @@ if (Test-Path $custom) {
 try {
     $before = @(Get-ChildItem $GameRoot -Filter "ScreenShot*.png" -ErrorAction SilentlyContinue | ForEach-Object Name)
     $crashBefore = @(Get-ChildItem $docs -Filter "crash-*.log" -ErrorAction SilentlyContinue | ForEach-Object Name)
-    Get-ChildItem $GameRoot -Filter "gshuf-capture-*.png" -ErrorAction SilentlyContinue | Remove-Item -Force
+    Get-ChildItem $GameRoot -Filter "adt-capture-*.png" -ErrorAction SilentlyContinue | Remove-Item -Force
 
     $cmd = Join-Path $PSScriptRoot "launch.cmd"
     @("@echo off", "cd /d C:\Modding\MO2", "start `"`" `"$mo2`" -i `"$Instance`" -p $Profile run -e F4SE") | Set-Content $cmd -Encoding ascii
@@ -118,7 +118,7 @@ try {
     while ($sw.Elapsed.TotalSeconds -lt $TimeoutSeconds -and (Get-Process Fallout4 -ErrorAction SilentlyContinue)) {
         Start-Sleep -Seconds 3
         if ($CaptureEverySeconds -gt 0 -and $sw.Elapsed.TotalSeconds -ge $nextCapture) {
-            try { Capture-Desktop (Join-Path $GameRoot ("gshuf-capture-{0}.png" -f $captureIndex)) } catch {}
+            try { Capture-Desktop (Join-Path $GameRoot ("adt-capture-{0}.png" -f $captureIndex)) } catch {}
             $captureIndex++; $nextCapture += $CaptureEverySeconds
         }
     }
@@ -132,7 +132,7 @@ try {
     $newCrashes = @(Get-ChildItem $docs -Filter "crash-*.log" -ErrorAction SilentlyContinue | Where-Object { $crashBefore -notcontains $_.Name } | ForEach-Object FullName)
     "started after $([int]$started)s, ran $([int]($sw.Elapsed.TotalSeconds - $started))s, timedOut=$timedOut, mode $modeName"
     "new screenshots: " + ($newShots -join '; ')
-    "captures: " + ((Get-ChildItem $GameRoot -Filter "gshuf-capture-*.png" -ErrorAction SilentlyContinue | ForEach-Object FullName) -join '; ')
+    "captures: " + ((Get-ChildItem $GameRoot -Filter "adt-capture-*.png" -ErrorAction SilentlyContinue | ForEach-Object FullName) -join '; ')
     "new crash logs: " + ($newCrashes -join '; ')
     if ($timedOut) { $failures.Add("the game was still running after $TimeoutSeconds s, so the test did not finish") }
     if ($newCrashes.Count -gt 0) { $failures.Add("$($newCrashes.Count) new crash logs") }

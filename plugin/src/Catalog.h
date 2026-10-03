@@ -1,6 +1,6 @@
 #pragma once
 
-namespace GShuf::Catalog
+namespace ADT::Catalog
 {
 	struct Slot
 	{
@@ -8,12 +8,11 @@ namespace GShuf::Catalog
 		std::string category;
 		int width{ 0 };
 		int height{ 0 };
-		bool blank{ false };
 		std::string restore;  // for an inline shader slot: "Materials\..." file that puts the vanilla look back
 		std::string model;    // for an object slot ("&"): the object's game model, lowercase, relative to Meshes
 	};
 
-	// Loads Data\GShuf\vanilla-slots.json.
+	// Loads Data\ADT\vanilla-slots.json.
 	bool Load();
 	// Resolves the object slots ("&" plugin file ":" hex id) to the running load order's form ids; call once the game data is loaded.
 	void ResolveForms();

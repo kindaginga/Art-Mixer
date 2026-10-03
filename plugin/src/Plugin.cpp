@@ -3,15 +3,16 @@
 #include "ApplyNow.h"
 #include "AutoTest.h"
 #include "Catalog.h"
+#include "CoreCheck.h"
 #include "Distributor.h"
 #include "Engine.h"
+#include "GameArchives.h"
 #include "Inventory.h"
 #include "LoadScreens.h"
 #include "MainMenu.h"
 #include "Packs.h"
 #include "Papyrus.h"
 #include "Settings.h"
-#include "Sounds.h"
 
 namespace
 {
@@ -56,31 +57,33 @@ namespace
 		if (!a_message) return;
 		switch (a_message->type) {
 		case F4SE::MessagingInterface::kGameDataReady:
-			GShuf::Catalog::ResolveForms();
-			GShuf::Packs::OnGameDataReady();
-			GShuf::Distributor::ApplyTextureSets();
-			GShuf::Distributor::ApplyBounds();
-			if (!GShuf::AutoTest::Skips("pickmodels")) GShuf::Distributor::ApplyPickModels();
-			if (!GShuf::AutoTest::Skips("inventory")) GShuf::Inventory::OnGameDataReady();
-			if (!GShuf::AutoTest::Skips("loadscreens")) GShuf::LoadScreens::OnGameDataReady();
-			GShuf::MainMenu::OnGameDataReady();
-			GShuf::AutoTest::OnGameDataReady();
+			ADT::CoreCheck::OnGameDataReady();
+			ADT::GameArchives::Install();
+			ADT::Catalog::ResolveForms();
+			ADT::Packs::OnGameDataReady();
+			ADT::Distributor::ApplyTextureSets();
+			ADT::Distributor::ApplyBounds();
+			if (!ADT::AutoTest::Skips("pickmodels")) ADT::Distributor::ApplyPickModels();
+			if (!ADT::AutoTest::Skips("inventory")) ADT::Inventory::OnGameDataReady();
+			if (!ADT::AutoTest::Skips("loadscreens")) ADT::LoadScreens::OnGameDataReady();
+			ADT::MainMenu::OnGameDataReady();
+			ADT::AutoTest::OnGameDataReady();
 			break;
 		case F4SE::MessagingInterface::kPostSaveGame:
-			GShuf::ApplyNow::OnPostSaveGame(a_message->data, a_message->dataLen);
+			ADT::ApplyNow::OnPostSaveGame(a_message->data, a_message->dataLen);
 			break;
 		case F4SE::MessagingInterface::kPreLoadGame:
 			// "New layout on every load": the save's areas load with the next seed; Apply now's own reload keeps the current one.
-			if (!GShuf::ApplyNow::OnPreLoadGame() && GShuf::Settings::Get().newLayoutEachLoad) {
-				GShuf::Settings::SetSeed(GShuf::Settings::Seed() + 1);
-				GShuf::Settings::Save();
-				GShuf::Distributor::Reapply();
-				logger::info("new layout on every load: seed {}", GShuf::Settings::Seed());
+			if (!ADT::ApplyNow::OnPreLoadGame() && ADT::Settings::Get().newLayoutEachLoad) {
+				ADT::Settings::SetSeed(ADT::Settings::Seed() + 1);
+				ADT::Settings::Save();
+				ADT::Distributor::Reapply();
+				logger::info("new layout on every load: seed {}", ADT::Settings::Seed());
 			}
 			break;
 		case F4SE::MessagingInterface::kPostLoadGame:
 			// The message's data pointer carries the load result itself.
-			GShuf::AutoTest::OnPostLoadGame(reinterpret_cast<std::uintptr_t>(a_message->data) != 0);
+			ADT::AutoTest::OnPostLoadGame(reinterpret_cast<std::uintptr_t>(a_message->data) != 0);
 			break;
 		default:
 			break;
@@ -101,24 +104,23 @@ bool Plugin::Initialize(const F4SE::LoadInterface* a_f4se)
 	const auto& module = REL::Module::get();
 	logger::info("{} v{} loaded on runtime {}", Version::PROJECT, Version::NAME, module.version().string());
 
-	const bool engine = GShuf::Engine::Initialize();
-	GShuf::Catalog::Load();
-	GShuf::Packs::Load();
-	GShuf::Settings::Load();
+	const bool engine = ADT::Engine::Initialize();
+	ADT::Catalog::Load();
+	ADT::Packs::Load();
+	ADT::Settings::Load();
 	if (engine) {
-		GShuf::Engine::InstallHooks(&GShuf::Distributor::OnModelLoaded);
-		GShuf::Engine::InstallReferenceHook(&GShuf::Distributor::OnReference3D);
-		GShuf::Engine::InstallModelHook(&GShuf::Distributor::ChooseModel);
-		if (!GShuf::AutoTest::Skips("textures")) GShuf::Engine::InstallTextureHook(&GShuf::Distributor::ChooseTexture);
+		ADT::Engine::InstallHooks(&ADT::Distributor::OnModelLoaded);
+		ADT::Engine::InstallReferenceHook(&ADT::Distributor::OnReference3D);
+		ADT::Engine::InstallModelHook(&ADT::Distributor::ChooseModel);
+		if (!ADT::AutoTest::Skips("textures")) ADT::Engine::InstallTextureHook(&ADT::Distributor::ChooseTexture);
 	}
-	if (!GShuf::AutoTest::Skips("sounds")) GShuf::Sounds::Install();
-	if (!GShuf::AutoTest::Skips("inventory")) GShuf::Inventory::Install();
-	GShuf::MainMenu::Install();
-	if (engine) GShuf::Engine::InstallMovieHook(&GShuf::MainMenu::RedirectMovie);
-	GShuf::MainMenu::LoadFromPacks();
-	GShuf::AutoTest::Configure();
+	if (!ADT::AutoTest::Skips("inventory")) ADT::Inventory::Install();
+	ADT::MainMenu::Install();
+	if (engine) ADT::Engine::InstallMovieHook(&ADT::MainMenu::RedirectMovie);
+	ADT::MainMenu::LoadFromPacks();
+	ADT::AutoTest::Configure();
 
 	F4SE::GetMessagingInterface()->RegisterListener(OnMessage);
-	F4SE::GetPapyrusInterface()->Register(GShuf::Papyrus::Register);
+	F4SE::GetPapyrusInterface()->Register(ADT::Papyrus::Register);
 	return true;
 }

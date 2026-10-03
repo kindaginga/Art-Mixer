@@ -10,7 +10,7 @@
 #define NOMINMAX
 #include <Windows.h>
 
-namespace GShuf::MainMenu
+namespace ADT::MainMenu
 {
 	namespace
 	{
@@ -22,9 +22,8 @@ namespace GShuf::MainMenu
 		int s_selected{ 0 };
 		std::atomic<int> s_opens{ 0 };
 		std::atomic<bool> s_loopOpen{ false };    // the menu loop video has been opened: the intro is over and the real menu is up
-		std::atomic<bool> s_skipStartup{ false };
-		std::atomic<bool> s_pickerEnabled{ true };  // the list entry is added to the main menu (the autotest baseline turns it off)
-		std::atomic<bool> s_rebuilding{ false };  // a pick is re-creating MainMenu  // autotest: startup videos are refused so the menu comes up at once
+		std::atomic<bool> s_skipStartup{ false };   // autotest: startup videos are refused so the menu comes up at once
+		std::atomic<bool> s_entryEnabled{ true };   // the list entry is added to the main menu (the autotest baseline turns it off)
 		void AttachToMenu();
 		std::vector<std::string> s_optionIds;
 
@@ -77,7 +76,7 @@ namespace GShuf::MainMenu
 		// The chosen pack id lives in the plugin's own state file, since the main menu runs no Papyrus.
 		[[nodiscard]] std::filesystem::path StatePath()
 		{
-			return std::filesystem::path("Data") / "GShuf" / "state.json";
+			return std::filesystem::path("Data") / "ADT" / "state.json";
 		}
 
 		void SaveState()
@@ -129,7 +128,7 @@ namespace GShuf::MainMenu
 				result = s_originalBinkOpen(a_name, a_flags);
 			}
 			if (lowered.ends_with("mainmenuloop.bk2")) {
-				// The loop starts when the intro videos are done, so the picker appears over the real menu only.
+				// The loop starts when the intro videos are done, so the entry goes into the real menu only.
 				s_loopOpen.store(true);
 				F4SE::GetTaskInterface()->AddTask([] {
 					auto* ui = RE::UI::GetSingleton();
@@ -181,15 +180,6 @@ namespace GShuf::MainMenu
 		constexpr auto kEntryText = "MENU ART";
 		constexpr int kBackIndex = 98;     // the selector's BACK row
 		constexpr int kOptionBase = 200;   // the selector's option rows: kOptionBase + option index
-
-		// The current option's name in the list's capitals.
-		[[nodiscard]] std::string EntryLabel()
-		{
-			std::scoped_lock lock(s_mutex);
-			std::string name = s_selected >= 0 && s_selected < static_cast<int>(s_options.size()) ? s_options[s_selected].name : "Vanilla";
-			for (auto& c : name) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-			return name;
-		}
 
 		// The main menu's list object, or an undefined value when the menu or its list is not up.
 		[[nodiscard]] RE::Scaleform::GFx::Value MenuList(RE::Scaleform::GFx::Movie** a_movie = nullptr)
@@ -285,14 +275,13 @@ namespace GShuf::MainMenu
 		}
 
 		// Replaces the list's entries with the given rows (text, index) and shows the first.
-		void ShowRows(RE::Scaleform::GFx::Movie* a_movie, RE::Scaleform::GFx::Value& a_list, RE::Scaleform::GFx::Value& a_entries, std::size_t a_count, const std::vector<RE::Scaleform::GFx::Value>& a_rows)
+		void ShowRows(RE::Scaleform::GFx::Value& a_list, RE::Scaleform::GFx::Value& a_entries, std::size_t a_count, const std::vector<RE::Scaleform::GFx::Value>& a_rows)
 		{
 			RE::Scaleform::GFx::Value cut[2]{ RE::Scaleform::GFx::Value(0), RE::Scaleform::GFx::Value(static_cast<std::int32_t>(a_count)) };
 			a_entries.Invoke("splice", nullptr, cut, 2);
 			for (const auto& row : a_rows) a_entries.PushBack(row);
 			a_list.SetMember("selectedIndex", RE::Scaleform::GFx::Value(0));
 			a_list.Invoke("InvalidateData");
-			(void)a_movie;
 		}
 
 		[[nodiscard]] double NumberOf(RE::Scaleform::GFx::Value& a_object, const char* a_member, double a_fallback);
@@ -357,7 +346,7 @@ namespace GShuf::MainMenu
 			back.SetMember("index", RE::Scaleform::GFx::Value(kBackIndex));
 			rows.push_back(back);
 			s_selectorOpen = true;
-			ShowRows(movie, list, entries, scanned.size(), rows);
+			ShowRows(list, entries, scanned.size(), rows);
 			FitSelectorRows(list, rows, names, suffixes);
 			logger::info("mainmenu: selector opened with {} option rows in place of {} entries", rows.size() - 1, scanned.size());
 		}
@@ -371,7 +360,7 @@ namespace GShuf::MainMenu
 			s_selectorOpen = false;
 			if (!list.IsObject() || !list.GetMember("entryList", &entries) || !entries.IsArray()) return;
 			const auto rows = ScanEntries(movie, entries).size();
-			ShowRows(movie, list, entries, rows, s_savedEntries);
+			ShowRows(list, entries, rows, s_savedEntries);
 			logger::info("mainmenu: selector closed; {} entries restored", s_savedEntries.size());
 			s_savedEntries.clear();
 		}
@@ -492,7 +481,7 @@ namespace GShuf::MainMenu
 		// Hooks the list of the current MainMenu movie once and inserts the entry; a re-created menu is a new movie and gets hooked again.
 		void AttachToMenu()
 		{
-			if (!s_pickerEnabled.load()) return;
+			if (!s_entryEnabled.load()) return;
 			RE::Scaleform::GFx::Movie* movie = nullptr;
 			auto list = MenuList(&movie);
 			if (!list.IsObject() || !movie) return;
@@ -525,7 +514,6 @@ namespace GShuf::MainMenu
 				if (std::string_view(name) == "MainMenu") {
 					logger::info("mainmenu: MainMenu {}", a_event.opening ? "opened" : "closed");
 					if (a_event.opening) {
-						s_rebuilding.store(false);
 						F4SE::GetTaskInterface()->AddTask([] { AttachToMenu(); });
 					} else {
 						s_loopOpen.store(false);
@@ -567,11 +555,11 @@ namespace GShuf::MainMenu
 	{
 		auto* ui = RE::UI::GetSingleton();
 		if (!ui) {
-			logger::error("mainmenu: UI singleton unavailable; picker disabled");
+			logger::error("mainmenu: UI singleton unavailable; the menu entry is left out");
 			return;
 		}
 		ui->RegisterSink<RE::MenuOpenCloseEvent>(&s_sink);
-		if (!s_pickerEnabled.load()) {
+		if (!s_entryEnabled.load()) {
 			logger::info("mainmenu: menu entry disabled by the autotest");
 			return;
 		}
@@ -585,9 +573,9 @@ namespace GShuf::MainMenu
 		s_skipStartup.store(a_skip);
 	}
 
-	void SetPickerEnabled(bool a_enabled)
+	void SetEntryEnabled(bool a_enabled)
 	{
-		s_pickerEnabled.store(a_enabled);
+		s_entryEnabled.store(a_enabled);
 	}
 
 	bool AtMainMenu()
@@ -662,7 +650,7 @@ namespace GShuf::MainMenu
 		const auto& category = candidates.front().second->category;
 		const Packs::Pack* chosen = nullptr;
 		if (category == "mainmenu") {
-			// The main menu's movie comes from the pack picked in the corner box.
+			// The main menu's movie comes from the pack picked in the MENU ART selector.
 			std::scoped_lock lock(s_mutex);
 			const auto id = s_selected >= 0 && s_selected < static_cast<int>(s_optionIds.size()) ? s_optionIds[s_selected] : std::string();
 			for (const auto& [pack, movie] : candidates) {
@@ -748,7 +736,6 @@ namespace GShuf::MainMenu
 			logger::info("mainmenu: choice stored; the menu picks it up when it is next created");
 			return;
 		}
-		s_rebuilding.store(true);
 		F4SE::GetTaskInterface()->AddTask([] {
 			if (auto* game = RE::Main::GetSingleton(); game) {
 				game->resetGame = true;
@@ -757,15 +744,4 @@ namespace GShuf::MainMenu
 		});
 	}
 
-	void SetMenuVideo(const std::string& a_path)
-	{
-		std::scoped_lock lock(s_mutex);
-		s_menuVideo = a_path;
-	}
-
-	std::string MenuVideo()
-	{
-		std::scoped_lock lock(s_mutex);
-		return s_menuVideo;
-	}
 }

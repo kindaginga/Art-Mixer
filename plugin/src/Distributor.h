@@ -3,7 +3,7 @@
 #include "Engine.h"
 #include "Packs.h"
 
-namespace GShuf::Distributor
+namespace ADT::Distributor
 {
 	struct Stats
 	{

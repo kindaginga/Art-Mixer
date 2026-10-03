@@ -2,11 +2,11 @@
 
 #include <unordered_map>
 
-namespace GShuf::Inventory
+namespace ADT::Inventory
 {
 	namespace
 	{
-		constexpr std::uint32_t kUniqueID = 'GShf';
+		constexpr std::uint32_t kUniqueID = 'ADT0';
 		constexpr std::uint32_t kPickedRecord = 'PICK';
 		constexpr std::uint32_t kDroppedRecord = 'DROP';
 		constexpr std::uint32_t kRecordVersion = 2;

@@ -2,7 +2,7 @@
 
 #include "Settings.h"
 
-namespace GShuf::Catalog
+namespace ADT::Catalog
 {
 	namespace
 	{
@@ -31,18 +31,13 @@ namespace GShuf::Catalog
 
 	std::string NormalizeMaterialPath(std::string_view a_path)
 	{
-		auto path = Settings::Lower(a_path);
-		std::replace(path.begin(), path.end(), '/', '\\');
-		while (!path.empty() && path.front() == '\\') path.erase(0, 1);
-		if (path.starts_with("data\\")) path.erase(0, 5);
-		if (path.starts_with("materials\\")) path.erase(0, 10);
-		return path;
+		return Settings::RelativePath(a_path, "materials");
 	}
 
 	bool Load()
 	{
 		s_slots.clear();
-		const auto path = std::filesystem::path("Data") / "GShuf" / "vanilla-slots.json";
+		const auto path = std::filesystem::path("Data") / "ADT" / "vanilla-slots.json";
 		std::ifstream file(path);
 		if (!file) {
 			logger::error("catalog: cannot open {}", path.string());
@@ -56,7 +51,6 @@ namespace GShuf::Catalog
 				slot.category = Settings::NormalizeCategory(Str(row, "category"));
 				slot.width = Int(row, "width");
 				slot.height = Int(row, "height");
-				slot.blank = Settings::Lower(Str(row, "diffuse")).find("paintingcanvas") != std::string::npos || slot.material.find("blank") != std::string::npos;
 				if (const auto restore = Str(row, "restore"); !restore.empty()) slot.restore = "Materials\\" + restore;
 				slot.model = Settings::Lower(Str(row, "model"));
 				std::replace(slot.model.begin(), slot.model.end(), '/', '\\');

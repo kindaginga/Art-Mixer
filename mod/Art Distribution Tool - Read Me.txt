@@ -1,0 +1,168 @@
+ART DISTRIBUTION TOOL
+=====================
+
+Art Distribution Tool lets you install several art mods at once (paintings, posters, signs, magazines) and
+spread their pictures across the Commonwealth by the percentages you choose. Set GPG Painting Replacer
+Collection to 40% and Signs Re Texture to 30%: 40% of the paintings and 30% of the signs they replace show
+their art, and the rest stay vanilla. Every picture frame gets its own pick.
+
+Works with Fallout 4 versions 1.10.163 (old-gen), 1.10.984 (next-gen), 1.11.169 and 1.11.240 with the
+same files. Works with Mod Organizer 2 and Vortex.
+
+
+REQUIREMENTS
+------------
+1. F4SE for your game version (f4se.silverlock.org).
+2. Mod Configuration Menu (Nexus 21497), any version from 1.39 on.
+3. Runtime Database (Nexus 108394). The plugin uses it to run on every game version.
+
+
+INSTALL (both managers)
+-----------------------
+1. Install the requirements above.
+2. Install "Art Distribution Tool" with your mod manager like any other mod (it is a FOMOD, click through it).
+   Make sure ArtDistributionTool.esl is enabled in your plugin list. The converter is inside the mod at
+   Tools\ArtDistributionTool\ArtDistributionToolConverter.exe.
+3. Install the art mods you want to use with your mod manager, as you would without Art Distribution Tool, and
+   pick whatever their installers offer. Art mods are replacers: they change the game's own paintings,
+   posters, signs, magazines, props and set dressing, Pip-Boy or main menu. Standalone art mods, which add
+   new objects of their own through their own plugin (buildable posters, new magazines), need no converting:
+   they keep working next to Art Distribution Tool.
+4. Open the converter (see CONVERT below), press "Find installed art mods", untick what you do not want,
+   press Convert. The converter reads each mod as you installed it. Afterwards you can disable the original
+   art mods you converted.
+   A mod that also adds objects of its own through its plugin can stay enabled: where the sliders pick
+   Vanilla, Art Distribution Tool shows the game's own files, not the mod's.
+5. Mod Organizer 2: press F5, enable the new "Art Distribution Tool Packs" mod and put it BELOW Art Distribution Tool.
+   Vortex: open Downloads, install "Art Distribution Tool Packs.zip", enable it, let it override Art Distribution Tool.
+6. Start the game. Open MCM, Art Distribution Tool, and set each pack's slider (see MENU below). Each pack has
+   one slider, on the page with most of its art; its number is the percent of everything the pack replaces
+   that shows its art (packs on the Other replacers page have an on/off switch instead). The game's own art
+   fills whatever the packs leave.
+   Changes wait until you apply them: press "Apply all" on the main page, or answer "Apply all" when
+   you leave Art Distribution Tool or the menu with changes not applied. After you confirm, the game saves as
+   ADTApply, returns to the main menu and loads that save, so every change shows at once (one loading
+   screen; the ADTApply save is overwritten each time). "Cancel" when leaving puts every setting back
+   to how it was.
+
+
+CONVERT
+-------
+Start ArtDistributionToolConverter.exe. The quickest way is to add it as a tool in your manager once:
+  Mod Organizer 2: the executables list (the gears icon), Add, browse to
+    <your instance>\mods\Art Distribution Tool\Tools\ArtDistributionTool\ArtDistributionToolConverter.exe
+  Vortex: Dashboard, Add tool, browse to Data\Tools\ArtDistributionTool\ArtDistributionToolConverter.exe in your
+    game folder after deployment.
+You can also double-click the exe directly.
+
+The window finds your Mod Organizer 2 instances and Vortex by itself:
+  Mod Manager        pick the instance (or Vortex). When you start the converter from inside a manager it
+                     preselects that manager.
+  FO4 Folder         filled from the instance; the game's own art is read from your game archives, not copied.
+  Find installed art mods   lists the installed mods of that manager that hold art the converter takes
+                     (Mod Organizer 2: enabled and disabled mods; Vortex: its staging folder). Enabled mods
+                     are ticked for you; untick what you do not want, and tick any other row to add it.
+                     Every run rebuilds all packs from the ticked mods. When a mod you leave unticked is
+                     enabled (Mod Organizer 2) and replaces objects that the ticked mods also replace, the
+                     log and the finish message name it and the number of objects it shares with them.
+  Convert            writes the "Art Distribution Tool Packs" mod (or, for Vortex, a zip in its downloads).
+When you open the converter again after a conversion, the list shows the mods your packs were converted
+from, marked "converted", and the status line gives the date. Nothing needs converting again unless your
+art mods changed.
+
+Each mod becomes one pack, named after the mod in your manager. To give a pack another name, rename the mod
+in your manager before you convert. Two packs with the same name show as two sliders with the same label, so
+rename one of them. A renamed pack counts as a new pack: its slider starts at 0.
+A mod converts as you installed it: when its installer offered a choice, the pack holds what you chose. To
+use another choice, reinstall the mod with it and convert again.
+Loading screens: the game shows a turning magazine on some of its loading screens. A magazine cover pack can
+add its covers to the loading screens the same way, set on the "Loading screens" page; nothing else of a pack
+ever goes on a loading screen. If you use ALR (Automated Loading Screen Replacer), Art Distribution Tool leaves the
+loading screens to it.
+The log in the window and ADT\convert-report.txt in the output list what was found in each mod.
+Each category page has 10 pack slots; the report names any pack that got no slider.
+A mod whose items are all in another mod you convert, file for file (a cut-down copy of the same mod),
+is left out; a warning names the mod that already has them.
+A patch joins its mod's pack. When two mods you convert come from the same Nexus page and replace at least
+one of the same objects, the smaller one becomes part of the larger one's pack, under the larger one's name
+and slider, and its version of the shared objects is used; the log names every patch it joined. The
+converter reads the Nexus page from Mod Organizer 2's record of the mod, or, under Vortex, from the page
+number in the mod's folder name.
+
+What the converter recognizes. Only art counts: files in the game's set dressing, props and loading screen
+art folders, signs, quest pictures, the Pip-Boy, and the main menu. Everything else a mod replaces (bodies,
+faces, clothes, armor, weapons, interface, landscape, sky, sounds) stays with that mod; the log lists what
+was left, so keep such a mod installed for it. "Find installed art mods" lists only mods with art.
+  - Main menu replacers: Video\MainMenuLoop.bk2 (still or animated). Each such mod becomes a choice of the
+    "MENU ART" entry in the main menu, between SETTINGS and CREW; each press moves to the next choice.
+    A pick restarts the main menu with that video; the choice is kept in ADT\state.json.
+  - Pip-Boy replacers: the screen background (textures\AnimObjects\Pipboy\PipBoyScreen_d.dds) and the
+    device skin (PipBoy01_d, PipBoy02_d, PipBoyLabels01_d, PipBoyInterior01_d, PipBoyGlow01_d) get their own
+    "Pip-Boy" page: one list for the screen background and one for the skin, Vanilla or one pack each.
+  - Textures at vanilla art paths (replacer mods): each picture is tied to the vanilla frame it replaces.
+  - Any other texture or material over one of the game's own (props, food boxes, bottles, signs): it goes
+    on the "Other replacers" page, or on the page of its kind.
+  - Models over one of the game's own, and models or names a mod's plugin gives the game's own objects.
+    Pip-Boy models follow the Pip-Boy skin list.
+  - Textures the game loads by their name rather than through a material: the Pip-Boy screen effects
+    (these follow the Pip-Boy screen list), and texture sets of art objects. The Pip-Boy world map, perk
+    chart and Pip-Boy interface files are not converted; they stay with their mod.
+  - The main menu theme (Music\Special\MUS_MainTheme), which follows the main menu list.
+  - Main menu interface files over the game's own.
+  - A mod plugin's changes to the game's own material swaps and texture sets.
+  - Materials (.bgsm) at vanilla art paths that point at new textures.
+  - A adt-pack.json in the mod (optional) listing pictures and categories explicitly.
+Each replacement shows only on the objects its mod replaces, just as the mod does on its own. Left alone:
+a mod's new objects and their pictures (its own plugin shows them) and textures nothing in the game uses.
+
+Command line (for scripts): ArtDistributionToolConverter --game "<Fallout 4 folder>" --out "<mods folder>\Art Distribution Tool Packs" <installed mod folders...>
+
+
+MENU
+----
+  Picture pages    Paintings, Posters, Signage, Magazines and Quest, each shown when a pack's slider sits
+                   there. A pack's slider sits on the page with most of its art and sets all of its art:
+                   Alternative Magazine Covers at 40 on Magazines shows its art on 40% of its magazines and
+                   on 40% of the 4 paintings it also replaces. The slider's help line says what it sets.
+                   The sliders are independent: moving one changes no other. Where two packs replace the
+                   same object, their numbers split it; under 100 together the rest is the game's own, over
+                   100 they are scaled down to 100.
+                   Packs whose art on a page is all for Far Harbor or Nuka-World sit under that location's
+                   heading, and the rest (packs that replace base-game files) under "Base game".
+  Magazine backs   have no slider. A magazine's back shows the version of that back from the pack its
+                   cover shows, or the game's own back when that pack has none; a vanilla cover keeps a
+                   vanilla back. A pack with only backs gets no slider, so its backs are not used;
+                   the converter warns about it.
+  Other replacers  packs whose art is mostly props and set dressing: food, bottles, TVs, bins, crates, and
+                   their models. One on/off switch per pack: on shows the pack on every object it
+                   replaces, off shows the game's own. Packs that are on for the same object share it
+                   evenly; the switch's help line gives the split.
+  Pip-Boy page     two lists, screen background and skin: Vanilla or the pack the Pip-Boy wears.
+  Loading screens page   one slider per pack with magazine covers: the percent of all loading screens that
+                   show one of its covers, on the game's own turning magazine with the pack's back. 100
+                   makes every loading screen a pack magazine, 0 none; the rest are the game's own.
+  Apply all        applies every change on these pages (see step 6 above). Leaving Art Distribution Tool or the
+                   menu with changes not applied asks "Apply all" or "Cancel"; Cancel puts every setting back.
+  Shuffle layout   picks a new arrangement with the same slider settings. The arrangement otherwise
+                   stays the same across saves and loads until you apply a change.
+  New layout on every load   off by default; when on, every save you load gets a new arrangement.
+  Reset all settings   back to defaults: all art vanilla (every pack slider at 0), Pip-Boy screen and skin
+                       on Vanilla, new layout on every load off, layout seed 1,
+                       vanilla main menu video.
+  When the converter is run again and the packs it writes changed (a mod added or removed, for example),
+  every setting goes back to its default by itself, as with Reset all settings, and a message says "the
+  art packs changed, settings were reset". Converting the same mods again keeps your settings.
+
+
+NOTES
+-----
+  - Pictures inside precombined meshes (almost all placed art) are drawn from data the game builds when
+    an area loads, which is why Apply all reloads the save.
+  - An item you pick up keeps the look it had in the world in your inventory, and again when you drop it.
+  - Uninstall: disable both mods. Items you picked up while they showed a pack's name keep that name,
+    like a renamed item; everything else goes back to vanilla.
+  - Damaged install: when files of Art Distribution Tool are missing or changed (an install or update that
+    did not finish, for example), the game shows a message naming them at startup. Open the converter: under
+    Mod Organizer 2 it restores them from the archive the mod was installed from and lists what it restored.
+    Where that archive is gone, or under Vortex, reinstall Art Distribution Tool with your mod manager.
+  - Log file: Documents\My Games\Fallout4\F4SE\ArtDistributionTool.log.

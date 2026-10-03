@@ -1,6 +1,6 @@
 #pragma once
 
-namespace GShuf::Engine
+namespace ADT::Engine
 {
 	using ModelLoadedCallback = void (*)(const char* a_modelPath, RE::NiAVObject* a_root);
 	using Reference3DCallback = void (*)(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root);

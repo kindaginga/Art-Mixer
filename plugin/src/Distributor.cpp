@@ -9,15 +9,13 @@
 #include "Packs.h"
 #include "Settings.h"
 
-namespace GShuf::Distributor
+namespace ADT::Distributor
 {
 	namespace
 	{
 		struct Entry
 		{
 			RE::NiPointer<RE::NiAVObject> geometry;
-			std::string model;
-			int index{ 0 };
 			std::string originalName;   // shader property name as loaded from the NIF
 			std::string currentMaterial;  // material file currently applied, empty when the original is in place
 			const Catalog::Slot* slot{ nullptr };
@@ -94,44 +92,6 @@ namespace GShuf::Distributor
 
 		std::atomic<int> s_swapLogs{ 0 };
 
-		// Categories where a blank canvas can take a pack's other pictures; elsewhere a picture only replaces its own object.
-		[[nodiscard]] bool FillsAnyFrame(std::string_view a_category)
-		{
-			return a_category == "paintings" || a_category == "posters" || a_category == "signage" || a_category == "magazines" || a_category == "quest";
-		}
-
-		[[nodiscard]] bool SameAspect(int a_w1, int a_h1, int a_w2, int a_h2)
-		{
-			if (a_w1 <= 0 || a_h1 <= 0 || a_w2 <= 0 || a_h2 <= 0) return false;
-			return static_cast<std::int64_t>(a_w1) * a_h2 == static_cast<std::int64_t>(a_w2) * a_h1;
-		}
-
-		[[nodiscard]] const Packs::Image* PickImage(const Packs::Pack& a_pack, const Catalog::Slot& a_slot, std::uint64_t a_hash)
-		{
-			const auto it = a_pack.images.find(a_slot.category);
-			if (it == a_pack.images.end() || it->second.empty()) return nullptr;
-			const auto& images = it->second;
-			// Several variants for the same frame (a replacer's clean and damaged sets, for example) are picked among by hash.
-			std::vector<const Packs::Image*> matching;
-			for (const auto& image : images) {
-				if (!image.slot.empty() && image.slot == a_slot.material) matching.push_back(&image);
-			}
-			if (!matching.empty()) return matching[static_cast<std::size_t>(a_hash % matching.size())];
-			if (!a_slot.blank || !FillsAnyFrame(a_slot.category)) return nullptr;
-			// A blank canvas takes a picture made for no frame or another frame's replacement picture; other frames take only their own.
-			const auto isPicture = [](const Packs::Image& a_image) { return a_image.slot.empty() || std::string_view("#&%~!").find(a_image.slot[0]) == std::string_view::npos; };
-			for (const auto& image : images) {
-				if (isPicture(image) && SameAspect(image.width, image.height, a_slot.width, a_slot.height)) matching.push_back(&image);
-			}
-			if (matching.empty()) {
-				for (const auto& image : images) {
-					if (isPicture(image)) matching.push_back(&image);
-				}
-			}
-			if (matching.empty()) return nullptr;
-			return matching[static_cast<std::size_t>(a_hash % matching.size())];
-		}
-
 		// The pack's image made for exactly this slot; several variants (a replacer's clean and damaged sets) are picked among by hash.
 		[[nodiscard]] const Packs::Image* ExactImage(const Packs::Pack& a_pack, const Catalog::Slot& a_slot, std::uint64_t a_hash)
 		{
@@ -172,22 +132,19 @@ namespace GShuf::Distributor
 			return it == a_values.categories.end() ? nullptr : &it->second;
 		}
 
-		// The share a pack's one slider gives its objects of a category: the slider on the pack's main page, or, for a kind of the Other
-		// replacers page while the pack's "Set by kind of object" is on, its slider for that kind; 0 for a pack past its page's slots.
-		[[nodiscard]] int ShareOf(const Packs::Pack& a_pack, const std::string& a_category, const Settings::Values& a_values)
+		// The share a pack's one control gives its objects: the slider or switch on the pack's main page; 0 for a pack past its page's slots.
+		[[nodiscard]] int ShareOf(const Packs::Pack& a_pack, const Settings::Values& a_values)
 		{
-			const auto main = Packs::MainPage(a_pack);
+			// A pack's slot index in a page's or kind's list, or the slot count for a pack the list leaves out.
+			const auto slotOf = [&](const std::string& a_list) {
+				const auto& slots = Packs::SlotsFor(a_list);
+				const auto found = std::find(slots.begin(), slots.end(), &a_pack);
+				return found == slots.end() ? static_cast<std::size_t>(Settings::kSlotsPerCategory) : static_cast<std::size_t>(found - slots.begin());
+			};
+			const auto& main = a_pack.page;
 			if (main.empty()) return 0;
-			const auto mainSlots = Packs::SlotsFor(main);
-			const auto j = static_cast<std::size_t>(std::find(mainSlots.begin(), mainSlots.end(), &a_pack) - mainSlots.begin());
+			const auto j = slotOf(main);
 			if (j >= static_cast<std::size_t>(Settings::kSlotsPerCategory)) return 0;
-			if (a_category.starts_with("other_") && main == "other" && a_values.otherByKind[j]) {
-				const auto kindSlots = Packs::SlotsFor(a_category);
-				const auto k = static_cast<std::size_t>(std::find(kindSlots.begin(), kindSlots.end(), &a_pack) - kindSlots.begin());
-				if (k >= static_cast<std::size_t>(Settings::kSlotsPerCategory)) return 0;
-				const auto* kind = SettingsOf(a_values, a_category);
-				return kind ? kind->percent[k] : 0;
-			}
 			const auto* page = SettingsOf(a_values, main);
 			return page ? page->percent[j] : 0;
 		}
@@ -204,7 +161,7 @@ namespace GShuf::Distributor
 			int total = 0;
 			for (std::size_t i = 0; i < packs.size(); ++i) {
 				if (listed && i >= static_cast<std::size_t>(Settings::kSlotsPerCategory)) break;
-				const int share = listed ? (settings ? settings->percent[i] : 0) : ShareOf(*packs[i], a_category, a_values);
+				const int share = listed ? (settings ? settings->percent[i] : 0) : ShareOf(*packs[i], a_values);
 				if (share <= 0 || (a_covers && !a_covers(*packs[i]))) continue;
 				candidates.emplace_back(packs[i], share);
 				total += share;
@@ -279,8 +236,7 @@ namespace GShuf::Distributor
 			const auto versionOf = [&](const Packs::Pack& a_pack) {
 				// A version for the swap entry that shows this material comes first.
 				const Packs::Image* found = a_scoped ? ExactImage(a_pack, *a_scoped, imageHash) : nullptr;
-				// A blank canvas takes only its own replacement unless "Put art on blank canvases" is on.
-				if (!found && &slot != a_scoped) found = slot.blank && !a_values.blankCanvases ? ExactImage(a_pack, slot, imageHash) : PickImage(a_pack, slot, imageHash);
+				if (!found && &slot != a_scoped) found = ExactImage(a_pack, slot, imageHash);
 				return found;
 			};
 			const auto* chosen = RollPack(slot.category, Hash(key), a_values, [&](const Packs::Pack& a_pack) { return versionOf(a_pack) != nullptr; });
@@ -337,9 +293,7 @@ namespace GShuf::Distributor
 			if (name.starts_with('@') && slot->restore.empty()) return;
 			Entry entry;
 			entry.geometry.reset(a_geometry);
-			entry.model = a_modelPath;
 			if (pipboy && s_pipboyGeometryLogs.fetch_add(1) < 20) { logger::info("distributor: pip-boy geometry #{} in {}: {} ({})", a_index, a_modelPath, name, slot->category); }
-			entry.index = a_index;
 			entry.originalName = slot->restore.empty() ? name : slot->restore;
 			entry.slot = slot;
 			entry.anchor = a_geometry->worldBound.center;
@@ -347,6 +301,12 @@ namespace GShuf::Distributor
 		});
 		if (found.empty()) return;
 		for (auto& entry : found) Apply(entry, values);
+		if (pipboy) {
+			// One line per Pip-Boy screen part, so the log shows what a pick put on it.
+			for (const auto& entry : found) {
+				if (entry.slot->category == "pipboyscreen") logger::info("distributor: pip-boy screen {} in {} shows {}", entry.slot->material, a_modelPath ? a_modelPath : "", entry.currentMaterial.empty() ? "its own material" : entry.currentMaterial);
+			}
+		}
 		std::scoped_lock lock(s_mutex);
 		for (auto& entry : found) s_entries.push_back(std::move(entry));
 		if (s_entries.size() >= s_pruneAt) {
@@ -358,11 +318,7 @@ namespace GShuf::Distributor
 	Engine::ModelChoice ChooseModel(std::uint32_t a_refFormID, std::uint32_t a_baseFormID, const char* a_modelPath, bool a_inWorld)
 	{
 		if (!a_modelPath || Catalog::Count() == 0 || Packs::All().empty()) return {};
-		auto path = Settings::Lower(a_modelPath);
-		std::replace(path.begin(), path.end(), '/', '\\');
-		while (!path.empty() && path.front() == '\\') path.erase(0, 1);
-		if (path.starts_with("data\\")) path.erase(0, 5);
-		if (path.starts_with("meshes\\")) path.erase(0, 7);
+		const auto path = Settings::RelativePath(a_modelPath, "meshes");
 		const auto* objectSlot = Catalog::FindForm(a_baseFormID);
 		const auto* vanilla = Packs::Vanilla();
 		const auto* game = objectSlot && vanilla ? ExactImage(*vanilla, *objectSlot, 0) : nullptr;
@@ -480,10 +436,7 @@ namespace GShuf::Distributor
 			if (!handler) return;
 			const auto add = [&](RE::TESModel* a_model) {
 				if (!a_model || !a_model->GetModel()) return;
-				auto path = Settings::Lower(a_model->GetModel());
-				std::replace(path.begin(), path.end(), '/', '\\');
-				if (path.starts_with("meshes\\")) path.erase(0, 7);
-				const auto it = slots.find(path);
+				const auto it = slots.find(Settings::RelativePath(a_model->GetModel(), "meshes"));
 				if (it == slots.end()) return;
 				s_pickModels.push_back({ a_model, it->first, it->second, a_model->GetModel(), a_model->textures, a_model->materials, a_model->numTextures, a_model->numTexturesSRGB, a_model->numMaterials });
 			};
@@ -615,8 +568,8 @@ namespace GShuf::Distributor
 			const auto slots = SlotsOf(name, a_swaps);
 			if (slots.material != name && s_swapLogs.fetch_add(1) < 20) logger::info("reference {:08X}: its material swap shows {} in place of {}{}", a_formID, slots.material, name, slots.scoped ? " (a slot of that swap entry)" : "");
 			const auto* slot = slots.shown ? slots.shown : slots.scoped;
-			// A pack material ("materials\gshuf\packs\...") or a pack texture under an inline shader ("@gshuf\packs\...").
-			const bool ours = lowered.find("gshuf\\packs\\") != std::string::npos;
+			// A pack material ("materials\adt\packs\...") or a pack texture under an inline shader ("@adt\packs\...").
+			const bool ours = lowered.find("adt\\packs\\") != std::string::npos;
 			if (!slot && !ours) return;
 			seen = true;
 			if (ours) {

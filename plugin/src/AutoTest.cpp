@@ -13,7 +13,7 @@
 #define NOMINMAX
 #include <Windows.h>
 
-namespace GShuf::AutoTest
+namespace ADT::AutoTest
 {
 	namespace
 	{
@@ -27,7 +27,6 @@ namespace GShuf::AutoTest
 		std::string s_consoleAfterA;  // console command issued in game after stage A
 		std::string s_place;          // comma-separated base form ids placed in front of the player at stage A2 (two frames when empty)
 		int s_placePitch{ 70 };       // camera pitch after the placement, in degrees down
-		int s_pickRow{ 0 };           // unused since the entry cycles the options; kept so old harness files parse
 		bool s_nameCheck{ false };    // after the placement: log the names of the placed items, pick one up, log its inventory stacks
 		bool s_inventoryCheck{ false };  // after the placement: pick the placed items up and photograph the inventory 3D view with model logging
 		bool s_noContainer{ false };     // the inventory check skips the container menu (for the save and load round trip)
@@ -141,7 +140,7 @@ namespace GShuf::AutoTest
 			});
 		}
 
-		// True once the Gallery Shuffle Apply all prompt is open, checked on the game thread for up to a_seconds.
+		// True once the Art Distribution Tool Apply all prompt is open, checked on the game thread for up to a_seconds.
 		bool WaitForApplyPrompt(int a_seconds)
 		{
 			for (int i = 0; i < a_seconds * 5; ++i) {
@@ -196,24 +195,23 @@ namespace GShuf::AutoTest
 		// Logs the Paintings slot 1 share in effect, in the menu's settings file and in the applied settings file.
 		void LogApplyState(std::string_view a_stage)
 		{
-			const auto menu = IniValue(std::filesystem::path("Data") / "MCM" / "Settings" / "GalleryShuffle.ini", "GShuf_Paintings", "iSlot1");
-			const auto applied = IniValue(std::filesystem::path("Data") / "F4SE" / "Plugins" / "GalleryShuffle_Applied.ini", "GShuf_paintings", "iSlot1");
+			const auto menu = IniValue(std::filesystem::path("Data") / "MCM" / "Settings" / "ArtDistributionTool.ini", "ADT_Paintings", "iSlot1");
+			const auto applied = IniValue(std::filesystem::path("Data") / "F4SE" / "Plugins" / "ArtDistributionTool_Applied.ini", "ADT_paintings", "iSlot1");
 			logger::info("autotest: {}: paintings slot 1 in effect {}, menu file {}, applied file {}", a_stage, Settings::Percent("paintings", 1), menu, applied);
 		}
 
-		// Moves a slider the way MCM does: the stored value, then MCM's change event.
-		void MenuSliderChange(int a_value, int a_slot = 1, std::string_view a_section = "GShuf_Paintings")
+		// Moves a slider the way MCM does: MCM stores the value, and nothing else happens until the changes are applied.
+		void MenuSliderChange(int a_value, int a_slot = 1, std::string_view a_section = "ADT_Paintings")
 		{
 			const auto id = Settings::MenuKey("iSlot", a_slot, a_section);
-			Console(fmt::format("cgf \"MCM.SetModSettingInt\" \"GalleryShuffle\" \"{}\" {}", id, a_value));
-			SendMcmEvent({ "OnMCMSettingChange|GalleryShuffle", "GalleryShuffle", id });
+			Console(fmt::format("cgf \"MCM.SetModSettingInt\" \"ArtDistributionTool\" \"{}\" {}", id, a_value));
 			std::this_thread::sleep_for(std::chrono::seconds(3));
 		}
 
 		// Logs the menu file's shares of two slots of one section and one slot of another against the expected values.
 		bool CheckShares(std::string_view a_step, std::string_view a_section, std::array<int, 2> a_slots, std::string_view a_otherSection, int a_other, std::array<int, 3> a_expected)
 		{
-			const auto path = std::filesystem::path("Data") / "MCM" / "Settings" / "GalleryShuffle.ini";
+			const auto path = std::filesystem::path("Data") / "MCM" / "Settings" / "ArtDistributionTool.ini";
 			// MCM leaves a key out of its file while it holds the default, 0 for a pack slot.
 			const auto read = [&](int a_slot, std::string_view a_category) {
 				const auto id = Settings::MenuKey("iSlot", a_slot, a_category);
@@ -238,8 +236,8 @@ namespace GShuf::AutoTest
 			SendInput(1, &input, sizeof(INPUT));
 		}
 
-		// The game moves its own cursor from raw mouse deltas, so the cursor is steered by feedback from the position
-		// the picker menu is given each frame; the target is a stage coordinate scaled to the game window.
+		// The game moves its own cursor from raw mouse deltas, so the cursor is steered by feedback from the engine's
+		// own cursor position; the target is a stage coordinate scaled to the game window.
 		bool MoveCursorTo(float a_stageX, float a_stageY)
 		{
 			HWND window = FindWindowW(nullptr, L"Fallout4");
@@ -388,7 +386,7 @@ namespace GShuf::AutoTest
 		static const auto s_skipped = [] {
 			std::string list;
 			bool enabled = false;
-			std::ifstream file(std::filesystem::path("Data") / "F4SE" / "Plugins" / "GalleryShuffle.ini");
+			std::ifstream file(std::filesystem::path("Data") / "F4SE" / "Plugins" / "ArtDistributionTool.ini");
 			std::string line;
 			bool inSection = false;
 			while (std::getline(file, line)) {
@@ -413,12 +411,12 @@ namespace GShuf::AutoTest
 
 	bool Configure()
 	{
-		const auto path = std::filesystem::path("Data") / "F4SE" / "Plugins" / "GalleryShuffle.ini";
+		const auto path = std::filesystem::path("Data") / "F4SE" / "Plugins" / "ArtDistributionTool.ini";
 		std::ifstream file(path);
 		if (!file) return false;
 		std::string line;
 		bool inSection = false;
-		bool picker = true;
+		bool menuEntry = true;
 		bool skipVideos = true;
 
 		while (std::getline(file, line)) {
@@ -438,7 +436,7 @@ namespace GShuf::AutoTest
 			if (key.find("sloadsave") != std::string::npos) s_save = value;
 			if (key.find("smode") != std::string::npos) s_mode = Settings::Lower(value);
 			if (key.find("smenuvideo") != std::string::npos) s_menuVideo = value;
-			if (key.find("bpicker") != std::string::npos) picker = value == "1";
+			if (key.find("bmenuentry") != std::string::npos) menuEntry = value == "1";
 			if (key.find("bskipvideos") != std::string::npos) skipVideos = value == "1";
 			if (key.find("smenuaction") != std::string::npos) s_menuAction = Settings::Lower(value);
 			if (key.find("bpickfirst") != std::string::npos) s_pickFirst = value == "1";
@@ -446,24 +444,6 @@ namespace GShuf::AutoTest
 			if (key.find("splace") != std::string::npos) s_place = value;
 			if (key.find("iplacepitch") != std::string::npos) s_placePitch = std::stoi(value);
 			if (key.find("bnamecheck") != std::string::npos) s_nameCheck = value == "1";
-			if (key.find("scardframing") != std::string::npos) {
-				// "x,y,z,rx,ry,rz,scale|..." : one framing per loading screen that shows a card.
-				std::vector<std::array<float, 7>> framings;
-				for (std::size_t start = 0; start < value.size();) {
-					const auto bar = value.find('|', start);
-					const auto item = value.substr(start, bar == std::string::npos ? std::string::npos : bar - start);
-					std::array<float, 7> f{};
-					std::size_t at = 0;
-					for (int i = 0; i < 7 && at < item.size(); ++i) {
-						const auto comma = item.find(',', at);
-						f[i] = std::stof(item.substr(at, comma == std::string::npos ? std::string::npos : comma - at));
-						at = comma == std::string::npos ? item.size() : comma + 1;
-					}
-					framings.push_back(f);
-					start = bar == std::string::npos ? value.size() : bar + 1;
-				}
-				LoadScreens::SetTestFramings(std::move(framings));
-			}
 			if (key.find("sloadcards") != std::string::npos) {
 				// "card|card|..." : the cards the loading screens show, in order.
 				std::vector<std::string> cards;
@@ -474,20 +454,17 @@ namespace GShuf::AutoTest
 				}
 				LoadScreens::SetTestCards(std::move(cards));
 			}
-			if (key.find("ipickrow") != std::string::npos) s_pickRow = std::stoi(value);
 			if (key.find("binventorycheck") != std::string::npos) s_inventoryCheck = value == "1";
 			if (key.find("bskipreload") != std::string::npos) s_skipReload = value == "1";
 			if (key.find("bnocontainer") != std::string::npos) s_noContainer = value == "1";
 			if (key.find("banykey") != std::string::npos) s_anyKey = value == "1";
 			if (key.find("iidleseconds") != std::string::npos) s_idleSeconds = std::stoi(value);
 			if (key.find("iloads") != std::string::npos) s_loadCount = std::stoi(value);
-
 		}
 		if (s_enabled) {
 			MainMenu::SetSkipStartupVideos(skipVideos);
-			MainMenu::SetPickerEnabled(picker);
-
-			logger::info("autotest: picker {}, startup videos {}", picker ? "on" : "off", skipVideos ? "skipped" : "played");
+			MainMenu::SetEntryEnabled(menuEntry);
+			logger::info("autotest: menu entry {}, startup videos {}", menuEntry ? "on" : "off", skipVideos ? "skipped" : "played");
 		}
 		if (s_enabled && s_mode == "mainmenu") {
 			logger::info("autotest: main menu mode, video '{}'", s_menuVideo);
@@ -660,8 +637,7 @@ namespace GShuf::AutoTest
 				RunOnGameThread([] { MainMenu::LogMenuState("before menu action"); });
 				std::this_thread::sleep_for(std::chrono::seconds(1));
 				MenuAction();
-				std::this_thread::sleep_for(std::chrono::seconds(2));
-				std::this_thread::sleep_for(std::chrono::seconds(3));
+				std::this_thread::sleep_for(std::chrono::seconds(5));
 				Console("qqq");
 			}).detach();
 			return;
@@ -683,15 +659,15 @@ namespace GShuf::AutoTest
 	{
 		if (!s_enabled || s_mode == "mainmenu") return;
 		// Slider test on the first share page with two or more packs: every slider is independent, so moving one never moves another,
-		// on its own page or on any other, and no Vanilla key exists.
+		// on its own page or on any other.
 		if (s_mode == "sliders") {
 			if (!a_loaded || s_finishIssued.exchange(true)) return;
 			std::thread([] {
 				std::this_thread::sleep_for(std::chrono::seconds(10));
-				// Leaves out the Pip-Boy lists.
+				// Leaves out the Pip-Boy lists and the Other replacers switches.
 				const auto tested = [](std::string_view a_section) {
 					const auto category = Settings::NormalizeCategory(a_section);
-					return category != "pipboyscreen" && category != "pipboyskin";
+					return category != "pipboyscreen" && category != "pipboyskin" && category != "other";
 				};
 				const auto sections = Packs::Sections();
 				std::string section, other;
@@ -723,13 +699,7 @@ namespace GShuf::AutoTest
 				passed += check("other section to 80 (this page stays)", { 100, 70, 80 });
 				MenuSliderChange(0, 2, section);
 				passed += check("second to 0 (first and the other page stay)", { 100, 0, 80 });
-				const auto vanillaKey = Settings::MenuKey("iVanilla", 1, section);
-				const auto colon = vanillaKey.find(':');
-				const auto vanilla = IniValue(std::filesystem::path("Data") / "MCM" / "Config" / "GalleryShuffle" / "settings.ini", std::string_view(vanillaKey).substr(colon + 1), std::string_view(vanillaKey).substr(0, colon));
-				const bool noVanilla = vanilla == "(none)";
-				logger::info("autotest: sliders no Vanilla key: {} ({} = {})", noVanilla ? "PASS" : "FAIL", vanillaKey, vanilla);
-				passed += noVanilla ? 1 : 0;
-				logger::info("autotest: sliders: {} of 7 checks passed", passed);
+				logger::info("autotest: sliders: {} of 6 checks passed", passed);
 				Console("qqq");
 			}).detach();
 			return;
@@ -758,7 +728,7 @@ namespace GShuf::AutoTest
 				LogApplyState("slider moved to 100");
 				RE::UIMessageQueue::GetSingleton()->AddMessage("PauseMenu", RE::UI_MESSAGE_TYPE::kShow);
 				std::this_thread::sleep_for(std::chrono::seconds(3));
-				SendMcmEvent({ "OnMCMMenuOpen|GalleryShuffle" });
+				SendMcmEvent({ "OnMCMMenuOpen|ArtDistributionTool" });
 				std::this_thread::sleep_for(std::chrono::seconds(2));
 				SendMcmEvent({ "OnMCMClose" });
 				if (WaitForApplyPrompt(20)) {
@@ -770,12 +740,12 @@ namespace GShuf::AutoTest
 				}
 				std::this_thread::sleep_for(std::chrono::seconds(6));
 				LogApplyState("after Cancel");
-				SendMcmEvent({ "OnMCMMenuClose|GalleryShuffle" });
+				SendMcmEvent({ "OnMCMMenuClose|ArtDistributionTool" });
 				const bool stray = WaitForApplyPrompt(6);
 				logger::info("autotest: a close with nothing to apply showed a prompt: {}", stray);
 				if (stray) AnswerApplyPrompt(1);
 				MenuSliderChange(100);
-				SendMcmEvent({ "OnMCMMenuClose|GalleryShuffle" });
+				SendMcmEvent({ "OnMCMMenuClose|ArtDistributionTool" });
 				SendMcmEvent({ "OnMCMClose" });
 				if (WaitForApplyPrompt(20)) {
 					Console("Screenshot");
@@ -794,7 +764,7 @@ namespace GShuf::AutoTest
 			return;
 		}
 		// Apply-now test: first load places the items, changes a setting through MCM (sConsoleAfterA) and reloads through
-		// GShuf.ReloadNow; the second load (the reloaded save) is photographed and the game quits.
+		// ADT.ReloadNow; the second load (the reloaded save) is photographed and the game quits.
 		if (s_mode == "applynow") {
 			static std::atomic<int> s_loads{ 0 };
 			if (!a_loaded) return;
@@ -827,7 +797,7 @@ namespace GShuf::AutoTest
 						start = bar == std::string::npos ? s_consoleAfterA.size() : bar + 1;
 					}
 					std::this_thread::sleep_for(std::chrono::seconds(2));
-					Console("cgf \"GShuf.ReloadNow\"");
+					Console("cgf \"ADT.ReloadNow\"");
 					for (int i = 0; i < 60; ++i) {
 						std::this_thread::sleep_for(std::chrono::seconds(1));
 						RunOnGameThread([] { ConfirmMessageBox(true); });
@@ -955,9 +925,9 @@ namespace GShuf::AutoTest
 			if (s_skipReload) {
 				if (s_inventoryCheck) {
 					// Saves and loads again, so the log shows the carried and dropped items read back from the co-save.
-					Console("save gshufinv");
+					Console("save adtinv");
 					std::this_thread::sleep_for(std::chrono::seconds(20));
-					Console("load gshufinv");
+					Console("load adtinv");
 					for (int i = 0; i < 30; ++i) {
 						std::this_thread::sleep_for(std::chrono::seconds(1));
 						RunOnGameThread([] { ConfirmMessageBox(true); });

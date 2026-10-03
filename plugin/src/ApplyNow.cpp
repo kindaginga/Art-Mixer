@@ -6,11 +6,11 @@
 #define NOMINMAX
 #include <Windows.h>
 
-namespace GShuf::ApplyNow
+namespace ADT::ApplyNow
 {
 	namespace
 	{
-		constexpr std::string_view kSaveName{ "GShufApply" };
+		constexpr std::string_view kSaveName{ "ADTApply" };
 		// How long a requested save may take before the reload is given up.
 		constexpr auto kSaveTimeout = std::chrono::seconds(60);
 		// How long the save file may take to show its new write time once the game reports the save.
@@ -62,7 +62,7 @@ namespace GShuf::ApplyNow
 			return root / local;
 		}
 
-		// True when GShufApply.fos was written at or after the current request.
+		// True when ADTApply.fos was written at or after the current request.
 		[[nodiscard]] bool SaveWritten()
 		{
 			const auto folder = SaveFolder();
@@ -91,8 +91,8 @@ namespace GShuf::ApplyNow
 			logger::warn("apply all: {}; nothing is reloaded", a_why);
 			F4SE::GetTaskInterface()->AddTask([] {
 				if (auto* manager = RE::MessageMenuManager::GetSingleton(); manager) {
-					manager->Create("Gallery Shuffle",
-						"The game could not save as \"GShufApply\", so it did not return to the main menu or reload.\n\nYour changes are applied and show in full the next time you load a save.",
+					manager->Create("Art Distribution Tool",
+						"The game could not save as \"ADTApply\", so it did not return to the main menu or reload.\n\nYour changes are applied and show in full the next time you load a save.",
 						new Notice(), RE::WARNING_TYPES::kDefault, "OK");
 				}
 			});
@@ -110,9 +110,9 @@ namespace GShuf::ApplyNow
 		logger::info("apply all: asking ({})", a_leaving ? "leaving the menu with changes" : "button");
 		F4SE::GetTaskInterface()->AddTask([a_leaving] {
 			const char* body = a_leaving ?
-				"You changed Gallery Shuffle settings without applying them.\n\nApply all: the game saves as \"GShufApply\", returns to the main menu and loads that save, so every change shows at once.\n\nCancel: the settings go back to how they were." :
-				"Apply all your Gallery Shuffle changes now?\n\nThe game saves as \"GShufApply\", returns to the main menu and loads that save, so every change shows at once.";
-			RE::MessageMenuManager::GetSingleton()->Create("Gallery Shuffle", body, new Prompt(), RE::WARNING_TYPES::kDefault, "Apply all", "Cancel");
+				"Apply your changes?\n\nApply all: saves as \"ADTApply\" and reloads.\nCancel: discards them." :
+				"Apply your changes?\n\nSaves as \"ADTApply\" and reloads.";
+			RE::MessageMenuManager::GetSingleton()->Create("Art Distribution Tool", body, new Prompt(), RE::WARNING_TYPES::kDefault, "Apply all", "Cancel");
 		});
 		return true;
 	}
@@ -151,7 +151,7 @@ namespace GShuf::ApplyNow
 		}
 		if (s_checking.exchange(true)) return;
 		const auto request = s_request.load();
-		// Returns to the main menu only once GShufApply.fos carries a write time from this request.
+		// Returns to the main menu only once ADTApply.fos carries a write time from this request.
 		std::thread([request] {
 			const auto deadline = std::chrono::steady_clock::now() + kWriteWait;
 			bool written = SaveWritten();

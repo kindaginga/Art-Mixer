@@ -1,6 +1,6 @@
 #pragma once
 
-namespace GShuf::Packs
+namespace ADT::Packs
 {
 	struct Image
 	{
@@ -11,8 +11,7 @@ namespace GShuf::Packs
 		std::optional<RE::BGSMaterialSwap*> swap;  // the material swap a model version loads with: unset keeps the object's, null is none
 		std::string swapForm;                      // the swap form ("file:local id") that swap resolves from at data load
 		std::string name;        // the name the object shows while this image is its version, empty for none
-		std::string card;        // loading screen card model (relative to Meshes) a picture shows on, empty for none
-		float cardWidth{ 0.0F };  // width of a flat picture card in units, 0 for a magazine card
+		std::string card;        // the game's loading screen magazine with this cover (relative to Meshes), empty for none
 		std::optional<std::array<std::int16_t, 6>> bounds;  // object bounds this version needs: min x, y, z, max x, y, z
 	};
 
@@ -52,6 +51,7 @@ namespace GShuf::Packs
 		std::string id;
 		std::string name;
 		bool vanilla{ false };
+		std::string page;   // the page its one slider sits on ("paintings", "posters", "signage", "magazines", "quest" or "other"), empty for none
 		std::string video;  // main menu video relative to Video, empty when the pack has none
 		std::string music;  // main menu theme relative to Music, empty when the pack has none
 		std::map<std::string, std::vector<Image>> images;  // by category
@@ -59,7 +59,7 @@ namespace GShuf::Packs
 		std::unordered_map<std::string, ScreenCard> screens;  // loading screen ("file:local id", lowercase) -> its card
 	};
 
-	// Loads Data\GShuf\packs.json written by the converter.
+	// Loads Data\ADT\packs.json written by the converter.
 	bool Load();
 	// Resolves the swap forms pack versions name and puts back game records a converted mod's plugin changed (game data loaded).
 	void OnGameDataReady();
@@ -75,18 +75,10 @@ namespace GShuf::Packs
 	[[nodiscard]] std::string Signature();
 	// Packs that replace the interface file (path relative to Data, any case and slash), with their copies.
 	[[nodiscard]] std::vector<std::pair<const Pack*, const Movie*>> MoviesFor(std::string_view a_path);
-	// The page a pack's one slider sits on ("paintings", "posters", "signage", "magazines", "quest" or "other"): the page with the most
-	// of its art, the first in menu order on a tie; "" for a pack with art on none.
-	[[nodiscard]] std::string MainPage(const Pack& a_pack);
 	// Packs with something for a category (a page or a kind), in pack order, whatever page their slider sits on.
 	[[nodiscard]] std::vector<const Pack*> PacksWith(std::string_view a_category);
-	// The packs a page or list shows, in slot order (1-based slots): a page lists the packs whose one slider sits on it; a kind lists
-	// the Other replacers packs with something for it; loading screens every pack with pictures; the Pip-Boy lists every pack with
-	// something for them.
-	[[nodiscard]] std::vector<const Pack*> SlotsFor(std::string_view a_category);
-	// The first slot of the group of packs that replace some of the same objects as a category's slot (1-based), whose shares add up to 100;
-	// 1 when packs.json lists no groups for the category, 0 outside the category's slots.
-	[[nodiscard]] int GroupOf(std::string_view a_category, int a_slot);
-	// The MCM section names of every share category in menu order, empty for packs.json from an older converter.
+	// The packs a page or list shows, in slot order (1-based slots), as packs.json lists them.
+	[[nodiscard]] const std::vector<const Pack*>& SlotsFor(std::string_view a_category);
+	// The MCM section names of every share category in menu order.
 	[[nodiscard]] const std::vector<std::string>& Sections();
 }

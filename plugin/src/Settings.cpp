@@ -1,13 +1,11 @@
 #include "Settings.h"
 
-namespace GShuf::Settings
+namespace ADT::Settings
 {
 	namespace
 	{
 		std::mutex s_mutex;
 		Values s_values;
-		// Category names of the Other page's kinds start with this; their MCM keys live in section GShuf_Other.
-		constexpr std::string_view kOtherKindPrefix{ "other_" };
 
 		[[nodiscard]] std::string Trim(std::string_view a_text)
 		{
@@ -46,7 +44,7 @@ namespace GShuf::Settings
 				const auto text = Trim(line);
 				if (text.empty() || text[0] == ';' || text[0] == '#') continue;
 				if (text.front() == '[' && text.back() == ']') {
-					// Only the GShuf_ sections the MCM pages write; anything else is a leftover of an older layout.
+					// Only the ADT_ sections the MCM pages write; anything else is a leftover of an older layout.
 					const auto name = Lower(text.substr(1, text.size() - 2));
 					section = name.starts_with(kSectionPrefix) ? name.substr(kSectionPrefix.size()) : std::string();
 					continue;
@@ -58,27 +56,20 @@ namespace GShuf::Settings
 				const auto value = ParseInt(text.substr(eq + 1));
 				if (!value) continue;
 				if (section == "main") {
-					if (key == "bblankcanvases") s_values.blankCanvases = *value != 0;
-					else if (key == "bnewlayouteachload") s_values.newLayoutEachLoad = *value != 0;
+					if (key == "bnewlayouteachload") s_values.newLayoutEachLoad = *value != 0;
 					else if (key == "iseed") s_values.seed = *value;
 					++applied;
-				} else if (key.starts_with("bkinds")) {
-					// An Other replacers pack's "Set by kind of object" switch.
-					const auto slot = ParseInt(key.substr(6));
-					if (!slot || *slot < 1 || *slot > kSlotsPerCategory) continue;
-					s_values.otherByKind[static_cast<std::size_t>(*slot - 1)] = *value != 0;
+				} else if (key.starts_with("bon")) {
+					// An Other replacers pack's switch: on is the whole share, off none.
+					const auto slot = ParseInt(key.substr(3));
+					if (section != "other" || !slot || *slot < 1 || *slot > kSlotsPerCategory) continue;
+					s_values.categories[section].percent[*slot - 1] = *value != 0 ? 100 : 0;
 					++applied;
 				} else if (key.starts_with("islot")) {
-					// "iSlot<n>_<kind>" in the Other section belongs to category other_<kind>; other sections take only "iSlot<n>".
-					const auto underscore = key.find('_', 5);
-					const auto slot = ParseInt(key.substr(5, underscore == std::string::npos ? std::string::npos : underscore - 5));
-					if (!slot || *slot < 1 || *slot > kSlotsPerCategory) continue;
-					std::string category = section;
-					if (underscore != std::string::npos) {
-						if (section != "other" || underscore + 1 >= key.size()) continue;
-						category = std::string(kOtherKindPrefix) + key.substr(underscore + 1);
-					}
-					s_values.categories[category].percent[*slot - 1] = std::clamp(*value, 0, 100);
+					// The Other replacers page stores switches, not shares.
+					const auto slot = ParseInt(key.substr(5));
+					if (section == "other" || !slot || *slot < 1 || *slot > kSlotsPerCategory) continue;
+					s_values.categories[section].percent[*slot - 1] = std::clamp(*value, 0, 100);
 					++applied;
 				} else if (key == "ipick") {
 					// A list page: the chosen slot gets everything, 0 means vanilla.
@@ -98,6 +89,16 @@ namespace GShuf::Settings
 		return out;
 	}
 
+	std::string RelativePath(std::string_view a_path, std::string_view a_folder)
+	{
+		auto path = Lower(a_path);
+		std::replace(path.begin(), path.end(), '/', '\\');
+		while (!path.empty() && path.front() == '\\') path.erase(0, 1);
+		if (path.starts_with("data\\")) path.erase(0, 5);
+		if (path.size() > a_folder.size() && path.starts_with(a_folder) && path[a_folder.size()] == '\\') path.erase(0, a_folder.size() + 1);
+		return path;
+	}
+
 	std::string NormalizeCategory(std::string_view a_category)
 	{
 		auto category = Lower(Trim(a_category));
@@ -107,8 +108,6 @@ namespace GShuf::Settings
 
 	std::string MenuKey(std::string_view a_prefix, int a_slot, std::string_view a_category)
 	{
-		const auto category = NormalizeCategory(a_category);
-		if (category.starts_with(kOtherKindPrefix)) return fmt::format("{}{}_{}:GShuf_Other", a_prefix, a_slot, category.substr(kOtherKindPrefix.size()));
 		return fmt::format("{}{}:{}", a_prefix, a_slot, a_category);
 	}
 
@@ -158,7 +157,7 @@ namespace GShuf::Settings
 		s_values = Values{};
 		ApplyIni(MenuDefaultsPath());
 		ApplyIni(MenuPath());
-		logger::info("settings: menu values taken over: blank canvases {}, seed {}, {} categories with values", s_values.blankCanvases, s_values.seed, s_values.categories.size());
+		logger::info("settings: menu values taken over: seed {}, {} categories with values", s_values.seed, s_values.categories.size());
 	}
 
 	void Load()
@@ -167,12 +166,12 @@ namespace GShuf::Settings
 		{
 			std::scoped_lock lock(s_mutex);
 			s_values = Values{};
-			ApplyIni(std::filesystem::path("Data") / "MCM" / "Config" / std::string(kModName) / "settings.ini");
+			ApplyIni(MenuDefaultsPath());
 			// Reads the applied settings, or on the first start without them the menu's own file.
 			const auto applied = AppliedPath();
 			firstStart = !std::filesystem::exists(applied);
-			ApplyIni(firstStart ? std::filesystem::path("Data") / "MCM" / "Settings" / (std::string(kModName) + ".ini") : applied);
-			logger::info("settings: blank canvases {}, seed {}, {} categories with values", s_values.blankCanvases, s_values.seed, s_values.categories.size());
+			ApplyIni(firstStart ? MenuPath() : applied);
+			logger::info("settings: seed {}, {} categories with values", s_values.seed, s_values.categories.size());
 		}
 		// Writes the values just read as the applied settings, before the menu can change its own file.
 		if (firstStart) Save();
@@ -180,16 +179,14 @@ namespace GShuf::Settings
 
 	bool Save()
 	{
-		std::string text = "; Gallery Shuffle: the settings in effect, written whenever changes are applied in the menu.\n";
+		std::string text = "; Art Distribution Tool: the settings in effect, written whenever changes are applied in the menu.\n";
 		{
 			std::scoped_lock lock(s_mutex);
-			text += fmt::format("[GShuf_Main]\nbBlankCanvases={}\nbNewLayoutEachLoad={}\niSeed={}\n", s_values.blankCanvases ? 1 : 0, s_values.newLayoutEachLoad ? 1 : 0, s_values.seed);
+			text += fmt::format("[ADT_Main]\nbNewLayoutEachLoad={}\niSeed={}\n", s_values.newLayoutEachLoad ? 1 : 0, s_values.seed);
 			for (const auto& [category, settings] : s_values.categories) {
 				text += fmt::format("\n[{}{}]\n", kSectionPrefix, category);
-				for (int i = 0; i < kSlotsPerCategory; ++i) text += fmt::format("iSlot{}={}\n", i + 1, settings.percent[i]);
+				for (int i = 0; i < kSlotsPerCategory; ++i) text += category == "other" ? fmt::format("bOn{}={}\n", i + 1, settings.percent[i] == 100 ? 1 : 0) : fmt::format("iSlot{}={}\n", i + 1, settings.percent[i]);
 			}
-			text += "\n[GShuf_OtherKinds]\n";
-			for (int i = 0; i < kSlotsPerCategory; ++i) text += fmt::format("bKinds{}={}\n", i + 1, s_values.otherByKind[static_cast<std::size_t>(i)] ? 1 : 0);
 		}
 		const auto path = AppliedPath();
 		std::ofstream file(path, std::ios::binary | std::ios::trunc);
@@ -222,18 +219,6 @@ namespace GShuf::Settings
 		if (a_slot < 1 || a_slot > kSlotsPerCategory) return;
 		std::scoped_lock lock(s_mutex);
 		s_values.categories[NormalizeCategory(a_category)].percent[a_slot - 1] = std::clamp(a_value, 0, 100);
-	}
-
-	void SetBlankCanvases(bool a_enabled)
-	{
-		std::scoped_lock lock(s_mutex);
-		s_values.blankCanvases = a_enabled;
-	}
-
-	void SetNewLayoutEachLoad(bool a_enabled)
-	{
-		std::scoped_lock lock(s_mutex);
-		s_values.newLayoutEachLoad = a_enabled;
 	}
 
 	void SetSeed(int a_seed)

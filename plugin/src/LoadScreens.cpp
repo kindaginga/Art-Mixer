@@ -9,7 +9,7 @@
 #define NOMINMAX
 #include <Windows.h>
 
-namespace GShuf::LoadScreens
+namespace ADT::LoadScreens
 {
 	namespace
 	{
@@ -29,41 +29,23 @@ namespace GShuf::LoadScreens
 			std::array<float, 2> originalZoom{};
 		};
 
-		// How a card may move: a picture stays still and full size; a magazine turns and zooms like the game's magazine screens.
+		// How the magazine turns and zooms on the game's magazine screens.
 		struct Motion
 		{
 			std::array<std::int16_t, 2> rotation;
 			std::array<float, 2> zoom;
 		};
-		constexpr Motion kPictureMotion{ { 0, 0 }, { 0.0F, 0.0F } };
 		constexpr Motion kMagazineMotion{ { -180, 180 }, { -0.5F, 2.0F } };
-
-		// Units the loading screen shows top to bottom at the card framing's distance; the width follows the screen's shape.
-		constexpr float kScreenHeight = 21.25F;
-
-		// The game window's width over its height, 16:9 when the window is not found.
-		[[nodiscard]] float ScreenAspect()
-		{
-			HWND window = FindWindowW(nullptr, L"Fallout4");
-			RECT client{};
-			if (!window || !GetClientRect(window, &client) || client.right <= 0 || client.bottom <= 0) return 16.0F / 9.0F;
-			return static_cast<float>(client.right) / static_cast<float>(client.bottom);
-		}
 
 		std::mutex s_mutex;
 		std::vector<Record> s_records;
 		RE::TESObjectSTAT* s_card{ nullptr };
-		RE::BGSTransform* s_cardTransform{ nullptr };
-		// One card and one picture framing per record slot (GalleryShuffle.esl 0x900 and 0xB00 onward).
+		// One card per distinct card model (ArtDistributionTool.esl 0x900 onward).
 		std::vector<RE::TESObjectSTAT*> s_cards;
-		std::vector<RE::BGSTransform*> s_cardTransforms;
 		RE::BGSTransform* s_magazineTransform{ nullptr };
-		RE::BGSTransform* s_backCoverTransform{ nullptr };
 		bool s_active{ false };
-		std::vector<std::array<float, 7>> s_testFramings;
 		std::vector<std::string> s_testCards;
 		std::size_t s_testCard{ 0 };
-		std::size_t s_testFraming{ 0 };
 		float s_cardColor{ 0.0F };  // the card statics' own color remapping index
 
 		// Sets a card static's model and color remapping index (its own when the card names none).
@@ -82,9 +64,7 @@ namespace GShuf::LoadScreens
 			auto* model = RE::fallout_cast<RE::TESModel*>(a_record.originalModel);
 			const char* path = model ? model->GetModel() : nullptr;
 			if (!path) return card;
-			auto shown = Settings::Lower(path);
-			std::replace(shown.begin(), shown.end(), '/', '\\');
-			if (shown.starts_with("meshes\\")) shown.erase(0, 7);
+			const auto shown = Settings::RelativePath(path, "meshes");
 			const auto* swapComponent = model->GetAsModelMaterialSwap();
 			const auto swap = swapComponent && swapComponent->swapForm ? Catalog::FormText(swapComponent->swapForm) : std::string();
 			return shown == card->gameModel && swap == card->swap ? card : nullptr;
@@ -110,29 +90,6 @@ namespace GShuf::LoadScreens
 			return nullptr;
 		}
 
-		// Points every record back at its own model and framing (caller holds the lock).
-		void Restore()
-		{
-			for (auto& record : s_records) {
-				*record.model = record.originalModel;
-				if (record.transform) *record.transform = record.originalTransform;
-				if (record.rotation) std::copy(record.originalRotation.begin(), record.originalRotation.end(), record.rotation);
-				if (record.zoom) std::copy(record.originalZoom.begin(), record.originalZoom.end(), record.zoom);
-			}
-		}
-
-		// The framing and motion a picture's card shows with; a picture card made for the 16:9 screen is shrunk until it fits a narrower one.
-		std::pair<RE::BGSTransform*, const Motion*> Framing(std::string_view a_category, const Packs::Image& a_picture, RE::BGSTransform* a_pictureTransform)
-		{
-			// A magazine cover card is the game's own loading screen magazine, so it takes the framing the game's magazine screens use.
-			// A back cover card carries the picture on the magazine's back, which its framing turns to the camera.
-			const bool magazine = a_category == "magazines" && s_magazineTransform;
-			if (magazine) return { s_backCoverTransform && a_picture.slot.find("\\backside\\") != std::string::npos ? s_backCoverTransform : s_magazineTransform, &kMagazineMotion };
-			a_pictureTransform->data = s_cardTransform->data;
-			if (a_picture.cardWidth > 0.0F) a_pictureTransform->data.scale = std::min(1.0F, kScreenHeight * ScreenAspect() / a_picture.cardWidth);
-			return { a_pictureTransform, &kPictureMotion };
-		}
-
 		void Show(Record& a_record, RE::TESObjectSTAT* a_card, RE::BGSTransform* a_transform, const Motion& a_motion)
 		{
 			*a_record.model = a_card;
@@ -141,6 +98,18 @@ namespace GShuf::LoadScreens
 			if (a_record.zoom) std::copy(a_motion.zoom.begin(), a_motion.zoom.end(), a_record.zoom);
 		}
 
+		// A cover card shows with the framing and motion of the game's magazine screens; without that framing, with the record's own.
+		void ShowCover(Record& a_record, RE::TESObjectSTAT* a_card)
+		{
+			if (s_magazineTransform) {
+				Show(a_record, a_card, s_magazineTransform, kMagazineMotion);
+				return;
+			}
+			const Motion motion{ a_record.originalRotation, a_record.originalZoom };
+			Show(a_record, a_card, static_cast<RE::BGSTransform*>(a_record.originalTransform), motion);
+		}
+
+		// Points a record back at its own model, framing and motion (caller holds the lock).
 		void RestoreRecord(Record& a_record)
 		{
 			*a_record.model = a_record.originalModel;
@@ -149,8 +118,8 @@ namespace GShuf::LoadScreens
 			if (a_record.zoom) std::copy(a_record.originalZoom.begin(), a_record.originalZoom.end(), a_record.zoom);
 		}
 
-		// Gives every loading screen record the picture the current layout picks for it, or its own look when the pick is
-		// vanilla; the same settings always give the same pictures (game thread).
+		// Gives every loading screen record the cover the current layout picks for it, or its own look when the pick is
+		// vanilla; the same settings always give the same covers (game thread).
 		void Assign()
 		{
 			std::scoped_lock lock(s_mutex);
@@ -179,43 +148,44 @@ namespace GShuf::LoadScreens
 				SetCard(s_cards[index], a_model, a_color);
 				return index;
 			};
-			for (std::size_t i = 0; i < s_records.size(); ++i) {
-				auto& record = s_records[i];
+			// A screen showing the game's own form: the vanilla card of its model where a converted mod ships that model's files, else its own look.
+			const auto showOwn = [&](Record& a_record) {
+				if (const auto* own = OwnCard(a_record); own) {
+					if (const auto index = cardIndex(own->card, own->color); index) {
+						const Motion motion{ a_record.originalRotation, a_record.originalZoom };
+						Show(a_record, s_cards[*index], static_cast<RE::BGSTransform*>(a_record.originalTransform), motion);
+						++vanillaCards;
+						return;
+					}
+					++withoutCard;
+				}
+				RestoreRecord(a_record);
+			};
+			for (auto& record : s_records) {
 				const auto* pack = Distributor::RollCategory("loadingscreens", "loadscreen|" + record.key);
-				std::vector<std::pair<std::string_view, const Packs::Image*>> pictures;
+				std::vector<const Packs::Image*> covers;
 				if (pack && !pack->vanilla) {
 					for (const auto& [category, images] : pack->images) {
 						for (const auto& image : images) {
-							if (!image.card.empty()) pictures.emplace_back(category, &image);
+							if (!image.card.empty()) covers.push_back(&image);
 						}
 					}
 				}
-				if (pictures.empty()) {
-					// A screen whose model has a vanilla card shows that card with the screen's own framing and motion.
-					if (const auto* own = OwnCard(record); own) {
-						if (const auto index = cardIndex(own->card, own->color); index) {
-							const Motion motion{ record.originalRotation, record.originalZoom };
-							Show(record, s_cards[*index], static_cast<RE::BGSTransform*>(record.originalTransform), motion);
-							++vanillaCards;
-							continue;
-						}
-						++withoutCard;
-					}
-					RestoreRecord(record);
+				if (covers.empty()) {
+					showOwn(record);
 					continue;
 				}
-				const auto& [category, picture] = pictures[static_cast<std::size_t>(Distributor::LayoutHash("loadscreen-image|" + record.key) % pictures.size())];
-				const auto index = cardIndex(picture->card, std::nullopt);
+				const auto* cover = covers[static_cast<std::size_t>(Distributor::LayoutHash("loadscreen-image|" + record.key) % covers.size())];
+				const auto index = cardIndex(cover->card, std::nullopt);
 				if (!index) {
 					++withoutCard;
 					RestoreRecord(record);
 					continue;
 				}
-				const auto [transform, motion] = Framing(category, *picture, s_cardTransforms[*index % s_cardTransforms.size()]);
-				Show(record, s_cards[*index], transform, *motion);
+				ShowCover(record, s_cards[*index]);
 				++shown;
 			}
-			logger::info("loading screens: {} of {} records show a pack picture under the current settings, {} the vanilla card of their own model, {} their own look for want of a free card", shown, s_records.size(), vanillaCards, withoutCard);
+			logger::info("loading screens: {} of {} records show a pack cover under the current settings; {} show the vanilla card of their own model and {} their own look for want of a free card", shown, s_records.size(), vanillaCards, withoutCard);
 		}
 
 		// Test runs: the next named card on every record, one per loading screen (game thread).
@@ -224,20 +194,20 @@ namespace GShuf::LoadScreens
 			std::scoped_lock lock(s_mutex);
 			if (!s_active || s_testCards.empty()) return;
 			const Packs::Pack* pack = nullptr;
-			std::vector<std::pair<std::string_view, const Packs::Image*>> pictures;
+			const Packs::Image* cover = nullptr;
 			// Test runs name the cards to show, one per loading screen.
 			const auto wanted = Settings::Lower(s_testCards[s_testCard++ % s_testCards.size()]);
 			for (const auto& candidate : Packs::All()) {
 				for (const auto& [category, images] : candidate.images) {
 					for (const auto& image : images) {
-						if (Settings::Lower(image.card) == wanted) {
+						if (!cover && Settings::Lower(image.card) == wanted) {
 							pack = &candidate;
-							pictures.emplace_back(category, &image);
+							cover = &image;
 						}
 					}
 				}
 			}
-			if (pictures.empty()) {
+			if (!cover) {
 				// A vanilla card shows on every record with the framing and motion of the screen it belongs to.
 				const auto owner = std::find_if(s_records.begin(), s_records.end(), [&](const Record& a_record) {
 					const auto* own = Packs::VanillaScreenCard(a_record.key);
@@ -251,27 +221,12 @@ namespace GShuf::LoadScreens
 					return;
 				}
 				logger::warn("loading screens: test card '{}' is not in any pack", wanted);
-				Restore();
+				for (auto& record : s_records) RestoreRecord(record);
 				return;
 			}
-			const auto& [category, picture] = pictures.front();
-			SetCard(s_card, picture->card, std::nullopt);
-			auto [framed, motionPointer] = Framing(category, *picture, s_cardTransform);
-			const auto& motion = *motionPointer;
-			auto* transform = framed;
-			if (!s_testFramings.empty() && !s_cardTransforms.empty()) {
-				// Test framings go into the last per-record framing, which no record shows while test cards are set.
-				transform = s_cardTransforms.back();
-				transform->data = framed->data;
-				const auto& f = s_testFramings[s_testFraming++ % s_testFramings.size()];
-				auto& t = transform->data;
-				t.position = { f[0], f[1], f[2] };
-				t.rotation = { f[3], f[4], f[5] };
-				t.scale = f[6];
-				logger::info("loading screens: test framing pos ({}, {}, {}) rotation ({}, {}, {}) scale {}", f[0], f[1], f[2], f[3], f[4], f[5], f[6]);
-			}
-			for (auto& record : s_records) Show(record, s_card, transform, motion);
-			logger::info("loading screens: next shows {} from '{}'", picture->card, pack ? pack->name : "");
+			SetCard(s_card, cover->card, std::nullopt);
+			for (auto& record : s_records) ShowCover(record, s_card);
+			logger::info("loading screens: next shows {} from '{}'", cover->card, pack ? pack->name : "");
 		}
 	}
 
@@ -283,14 +238,11 @@ namespace GShuf::LoadScreens
 			logger::info("loading screens: ALR is active, so its loading screens are left to it");
 			return;
 		}
-		s_card = data->LookupForm<RE::TESObjectSTAT>(0x802, "GalleryShuffle.esl");
-		s_cardTransform = data->LookupForm<RE::BGSTransform>(0x803, "GalleryShuffle.esl");
+		s_card = data->LookupForm<RE::TESObjectSTAT>(0x802, "ArtDistributionTool.esl");
 		s_magazineTransform = data->LookupForm<RE::BGSTransform>(0x249731, "Fallout4.esm");
-		if (!s_magazineTransform) logger::warn("loading screens: the game's magazine framing (Fallout4.esm 0x249731) is missing, so magazine cards use the picture framing");
-		s_backCoverTransform = data->LookupForm<RE::BGSTransform>(0x804, "GalleryShuffle.esl");
-		if (!s_backCoverTransform) logger::warn("loading screens: the back cover framing is missing from GalleryShuffle.esl, so back covers use the magazine framing");
-		if (!s_card || !s_cardTransform) {
-			logger::warn("loading screens: the card forms are missing from GalleryShuffle.esl");
+		if (!s_magazineTransform) logger::warn("loading screens: the game's magazine framing (Fallout4.esm 0x249731) is missing, so cover cards keep each screen's own framing");
+		if (!s_card) {
+			logger::warn("loading screens: the card form is missing from ArtDistributionTool.esl");
 			return;
 		}
 		std::scoped_lock lock(s_mutex);
@@ -335,13 +287,11 @@ namespace GShuf::LoadScreens
 			logger::warn("loading screens: the rotation and zoom ranges are not where they were measured, so cards keep each screen's own motion");
 		}
 		for (std::uint32_t i = 0; i < 512; ++i) {
-			auto* card = data->LookupForm<RE::TESObjectSTAT>(0x900 + i, "GalleryShuffle.esl");
-			auto* transform = data->LookupForm<RE::BGSTransform>(0xB00 + i, "GalleryShuffle.esl");
-			if (!card || !transform) break;
+			auto* card = data->LookupForm<RE::TESObjectSTAT>(0x900 + i, "ArtDistributionTool.esl");
+			if (!card) break;
 			s_cards.push_back(card);
-			s_cardTransforms.push_back(transform);
 		}
-		if (s_cards.empty()) logger::warn("loading screens: the per-record cards are missing from GalleryShuffle.esl");
+		if (s_cards.empty()) logger::warn("loading screens: the card statics are missing from ArtDistributionTool.esl");
 		s_cardColor = static_cast<RE::BGSModelMaterialSwap*>(s_card)->colorRemappingIndex;
 		s_active = !s_records.empty();
 		logger::info("loading screens: {} records ({} with a framing), {} skipped", s_records.size(), std::count_if(s_records.begin(), s_records.end(), [](const Record& r) { return r.transform != nullptr; }), skipped);
@@ -351,12 +301,6 @@ namespace GShuf::LoadScreens
 	void Reassign()
 	{
 		if (s_active) Assign();
-	}
-
-	void SetTestFramings(std::vector<std::array<float, 7>> a_framings)
-	{
-		std::scoped_lock lock(s_mutex);
-		s_testFramings = std::move(a_framings);
 	}
 
 	void SetTestCards(std::vector<std::string> a_cards)

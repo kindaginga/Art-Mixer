@@ -1,7 +1,7 @@
 #pragma once
 
-namespace GShuf::Papyrus
+namespace ADT::Papyrus
 {
-	// Registers the GShuf native script functions with the Papyrus VM.
+	// Registers the ADT native script functions with the Papyrus VM.
 	bool Register(RE::BSScript::IVirtualMachine* a_vm);
 }

@@ -12,7 +12,7 @@
 #include <Zydis/Zydis.h>
 #pragma warning(pop)
 
-namespace GShuf::Engine
+namespace ADT::Engine
 {
 	namespace
 	{
@@ -305,16 +305,21 @@ namespace GShuf::Engine
 		return nullptr;
 	}
 
+	// The diffuse texture of a lighting shader: its material keeps the model's texture set, and slot 0 is the diffuse.
+	static std::string LightingDiffuse(RE::BSShaderProperty* a_shader)
+	{
+		auto* material = reinterpret_cast<std::uint8_t*>(a_shader->material);
+		auto* textureSet = material ? *reinterpret_cast<RE::BSTextureSet**>(material + 0x78) : nullptr;
+		const char* diffuse = textureSet ? textureSet->GetTextureFilename(static_cast<RE::BSShaderProperty::TextureTypeEnum>(0)) : nullptr;
+		return diffuse ? std::string(diffuse) : std::string();
+	}
+
 	std::string DiffuseName(RE::NiAVObject* a_geometry)
 	{
 		auto* shader = AnyShader(a_geometry);
 		static const REL::Relocation<const RE::NiRTTI*> lightingRtti{ RE::Ni_RTTI::BSLightingShaderProperty };
 		const auto* rtti = shader ? shader->GetRTTI() : nullptr;
-		if (!rtti || !rtti->IsKindOf(lightingRtti.get())) return {};
-		auto* material = reinterpret_cast<std::uint8_t*>(shader->material);
-		auto* textureSet = material ? *reinterpret_cast<RE::BSTextureSet**>(material + 0x78) : nullptr;
-		const char* diffuse = textureSet ? textureSet->GetTextureFilename(static_cast<RE::BSShaderProperty::TextureTypeEnum>(0)) : nullptr;
-		return diffuse ? std::string(diffuse) : std::string();
+		return rtti && rtti->IsKindOf(lightingRtti.get()) ? LightingDiffuse(shader) : std::string();
 	}
 
 	std::string ShaderPropertyName(RE::NiAVObject* a_geometry)
@@ -346,23 +351,13 @@ namespace GShuf::Engine
 		const auto* rtti = shader->GetRTTI();
 		std::string path;
 		if (rtti && rtti->IsKindOf(lightingRtti.get())) {
-			// The lighting material keeps the model's texture set; slot 0 is the diffuse.
-			auto* material = reinterpret_cast<std::uint8_t*>(shader->material);
-			auto* textureSet = material ? *reinterpret_cast<RE::BSTextureSet**>(material + 0x78) : nullptr;
-			const char* diffuse = textureSet ? textureSet->GetTextureFilename(static_cast<RE::BSShaderProperty::TextureTypeEnum>(0)) : nullptr;
-			if (diffuse) path = diffuse;
+			path = LightingDiffuse(shader);
 		} else if (rtti && rtti->IsKindOf(effectRtti.get())) {
 			// An effect shader's base texture object carries the file it was loaded from.
 			auto* texture = shader->GetBaseTexture();
 			if (texture && texture->name.c_str()) path = texture->name.c_str();
 		}
-		if (path.empty()) return {};
-		path = Settings::Lower(path);
-		std::replace(path.begin(), path.end(), '/', '\\');
-		while (!path.empty() && path.front() == '\\') path.erase(0, 1);
-		if (path.starts_with("data\\")) path.erase(0, 5);
-		if (path.starts_with("textures\\")) path.erase(0, 9);
-		return "@" + path;
+		return path.empty() ? std::string() : "@" + TexturePath(path);
 	}
 
 	bool ApplyMaterial(RE::NiAVObject* a_geometry, const std::string& a_materialFile, int a_invalidate)
@@ -436,12 +431,7 @@ namespace GShuf::Engine
 
 	std::string TexturePath(std::string_view a_path)
 	{
-		auto path = Settings::Lower(a_path);
-		std::replace(path.begin(), path.end(), '/', '\\');
-		while (!path.empty() && path.front() == '\\') path.erase(0, 1);
-		if (path.starts_with("data\\")) path.erase(0, 5);
-		if (path.starts_with("textures\\")) path.erase(0, 9);
-		return path;
+		return Settings::RelativePath(a_path, "textures");
 	}
 
 	bool SetTextureSetTexture(RE::BGSTextureSet* a_set, std::size_t a_index, std::string_view a_texture)

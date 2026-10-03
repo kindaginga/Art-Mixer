@@ -1,7 +1,7 @@
 {
-  "name": "galleryshuffle",
+  "name": "artdistributiontool",
   "version-string": "0.1.0",
-  "description": "Gallery Shuffle F4SE plugin",
+  "description": "Art Distribution Tool F4SE plugin",
   "license": "MIT",
   "dependencies": [
     "boost-stl-interfaces",
