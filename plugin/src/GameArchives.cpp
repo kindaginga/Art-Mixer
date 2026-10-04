@@ -672,7 +672,7 @@ namespace ADT::GameArchives
 		std::array<GameSource, 4> s_gameSources{};
 		int s_gameSourceCount{ 0 };
 
-		// Answers a ADT\Game request made straight to one of the game's own file sources, as a model load makes it.
+		// Answers an ADT\Game request made straight to one of the game's own file sources, as a model load makes it.
 		ErrorCode HookedCreateStream(RE::BSResource::Location* a_self, const char* a_path, RE::BSTSmartPointer<RE::BSResource::Stream>& a_result, RE::BSResource::Location*& a_location, bool a_writable, RE::BSResource::LocationTraverser* a_traverser)
 		{
 			if (s_source && s_source->DoCreateStream(a_path, a_result, a_location, a_writable, a_traverser) == ErrorCode::kNone) return ErrorCode::kNone;

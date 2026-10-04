@@ -15,6 +15,8 @@ REQUIREMENTS
 1. F4SE for your game version (f4se.silverlock.org).
 2. Mod Configuration Menu (Nexus 21497), any version from 1.39 on.
 3. Runtime Database (Nexus 108394). The plugin uses it to run on every game version.
+4. .NET 10 Desktop Runtime, x64 (dotnet.microsoft.com/download/dotnet/10.0). The converter needs it; the
+   game side does not.
 
 
 INSTALL (both managers)
@@ -111,7 +113,7 @@ was left, so keep such a mod installed for it. "Find installed art mods" lists o
   - Main menu interface files over the game's own.
   - A mod plugin's changes to the game's own material swaps and texture sets.
   - Materials (.bgsm) at vanilla art paths that point at new textures.
-  - A adt-pack.json in the mod (optional) listing pictures and categories explicitly.
+  - An adt-pack.json in the mod (optional) listing pictures and categories explicitly.
 Each replacement shows only on the objects its mod replaces, just as the mod does on its own. Left alone:
 a mod's new objects and their pictures (its own plugin shows them) and textures nothing in the game uses.
 
@@ -166,3 +168,4 @@ NOTES
     Mod Organizer 2 it restores them from the archive the mod was installed from and lists what it restored.
     Where that archive is gone, or under Vortex, reinstall Art Distribution Tool with your mod manager.
   - Log file: Documents\My Games\Fallout4\F4SE\ArtDistributionTool.log.
+

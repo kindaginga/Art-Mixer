@@ -596,7 +596,7 @@ public sealed class Writer
     // Gives the vanilla pack a card of every loading screen model with a file a converted mod ships at the game's path or a pack model.
     private void WriteVanillaScreenCards(PackOutput vanilla, List<PackOutput> packs)
     {
-        var remodeled = packs.Where(p => p.Id != "vanilla").SelectMany(p => p.Images).Where(i => i.Slot is { } s && s.StartsWith('&') && i.Material.Length > 0).Select(i => i.Slot!).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var remodeled = packs.Where(p => p.Id != "vanilla").SelectMany(p => p.Images).Where(i => i.Slot is { } s && s.StartsWith('&') && i.Material.Length > 0).Select(i => i.Slot).ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (_overridden.Count == 0 && remodeled.Count == 0) return;
         var cards = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         var screens = _game.GameLoadScreens();

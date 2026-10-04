@@ -241,7 +241,7 @@ public static class InstalledMods
         private readonly int[] _counts = new int[Kinds.Length];
         /// <summary>Game objects, material swaps and texture sets the mod's plugins change the look of.</summary>
         public int GameRecords { get; private set; }
-        /// <summary>Whether the files include Art Distribution Tool's own: its plugin or anything in a ADT folder.</summary>
+        /// <summary>Whether the files include Art Distribution Tool's own: its plugin or anything in an ADT folder.</summary>
         public bool Own { get; private set; }
         public bool Any => GameRecords > 0 || _counts.Any(c => c > 0);
 

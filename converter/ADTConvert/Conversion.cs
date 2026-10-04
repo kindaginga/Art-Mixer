@@ -45,7 +45,7 @@ public static class Conversion
         var output = options.OutputFolder;
         if (Directory.Exists(output))
         {
-            foreach (var stale in new[] { "Materials\\ADT\\Packs", "Textures\\ADT\\Packs", "Meshes\\ADT\\Packs", "Video\\ADT\\Packs", "Music\\ADT", "Sound\\ADT\\Packs", "Interface\\ADT\\Packs", "Meshes\\ADT\\LoadCards", "Materials\\ADT\\LoadCards", "Textures\\ADT\\LoadCards", "F4SE\\Plugins\\ALR_Image_Dir", "ADT", "MCM\\Config\\ArtDistributionTool" })
+            foreach (var stale in new[] { "Materials\\ADT\\Packs", "Textures\\ADT\\Packs", "Meshes\\ADT\\Packs", "Video\\ADT\\Packs", "Music\\ADT", "Interface\\ADT\\Packs", "Meshes\\ADT\\LoadCards", "Materials\\ADT\\LoadCards", "Textures\\ADT\\LoadCards", "ADT", "MCM\\Config\\ArtDistributionTool" })
             {
                 var path = Path.Combine(output, stale);
                 if (Directory.Exists(path)) Directory.Delete(path, recursive: true);

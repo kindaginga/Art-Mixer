@@ -65,7 +65,7 @@ function Get-ApplyState([string[]] $lines, [string] $stage) {
 }
 
 $harness = Read-Harness $harnessIni
-if (-not $harness.Enabled) { throw "no [AutoTest] bEnabled=1 in $harnessIni; run rt5.py configure first" }
+if (-not $harness.Enabled) { throw "no [AutoTest] bEnabled=1 in $harnessIni; run rt6.py first" }
 if (@("", "sliders", "mcm", "applynow", "loadscreens", "mainmenu") -notcontains $harness.Mode) { throw "unknown sMode '$($harness.Mode)' in $harnessIni" }
 $modeName = if ($harness.Mode) { $harness.Mode } else { "place" }
 
@@ -216,7 +216,8 @@ try {
         $ini = Get-Content $custom -Raw
         $fixed = [regex]::Replace($ini, "(?m)^iLocation X=[^\r\n]*", "iLocation X=0")
         $fixed = [regex]::Replace($fixed, "(?m)^iLocation Y=[^\r\n]*", "iLocation Y=0")
-        if ($addedAlwaysActive) { $fixed = [regex]::Replace($fixed, "(?m)^bAlwaysActive=1\r?\n?", "") }        if ($fixed -ne $ini) { Set-Content $custom $fixed -Encoding ascii -NoNewline }
+        if ($addedAlwaysActive) { $fixed = [regex]::Replace($fixed, "(?m)^bAlwaysActive=1\r?\n?", "") }
+        if ($fixed -ne $ini) { Set-Content $custom $fixed -Encoding ascii -NoNewline }
         if ($wasReadOnly) { (Get-Item $custom).IsReadOnly = $true }
     }
 }

@@ -39,7 +39,8 @@ if (-not $SkipBuild) {
     if ($LASTEXITCODE -ne 0) { throw "ESL build failed" }
     Pop-Location
     Push-Location (Join-Path $root "converter\ADTConvert")
-    dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o (Join-Path $stage "converter") | Out-Null
+    # Framework-dependent: the exe needs the .NET 10 Desktop Runtime on the player's machine and carries no runtime of its own.
+    dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:Version=$Version -o (Join-Path $stage "converter") | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "converter publish failed" }
     Pop-Location
 }
