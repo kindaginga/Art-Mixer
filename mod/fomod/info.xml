@@ -5,6 +5,6 @@
   <Website>https://www.nexusmods.com/profile/kindaginga/mods</Website>
   <Description>Distributes art from several art mods across the game's paintings, posters, signs and magazines by the percentages you set in the MCM. Requires F4SE, MCM and the Runtime Database; the converter requires the .NET 10 Desktop Runtime.</Description>
   <Groups>
-    <element>Visuals and Graphics</element>
+    <element>Utilities</element>
   </Groups>
 </fomod>
