@@ -2,7 +2,6 @@ Scriptname ADT:Config extends Quest
 {Keeps the Art Distribution Tool MCM pages consistent, holds menu changes until the player applies them, and hands applied settings to the F4SE plugin.}
 
 string Property ModName = "ArtDistributionTool" AutoReadOnly
-int Property SlotCount = 10 AutoReadOnly
 
 ; An Apply all prompt is open.
 bool Busy = false
@@ -40,13 +39,19 @@ EndFunction
 ; Number of slots a category shows; anything above it is a leftover from an earlier pack set.
 int Function VisibleSlots(string asCategory)
 	If !ADT.IsReady()
-		Return SlotCount
+		Return 0
 	EndIf
-	int n = ADT.GetSlotCount(asCategory)
-	If n > SlotCount
-		n = SlotCount
+	Return ADT.GetSlotCount(asCategory)
+EndFunction
+
+; Number of slots to walk for a category: the shown ones and any left over with values.
+int Function SlotSpan(string asCategory)
+	int shown = VisibleSlots(asCategory)
+	int stored = ADT.GetStoredSlotCount(asCategory)
+	If stored > shown
+		Return stored
 	EndIf
-	Return n
+	Return shown
 EndFunction
 
 ; Zeroes applied slots above a category's pack count and picks beyond the list, so leftovers never count toward the cap.
@@ -66,7 +71,8 @@ Function CleanHiddenSlots()
 			EndIf
 		Else
 			int slot = visible + 1
-			While slot <= SlotCount
+			int stored = ADT.GetStoredSlotCount(cats[c])
+			While slot <= stored
 				If ADT.GetPercent(cats[c], slot) != 0
 					ADT.SetPercent(cats[c], slot, 0)
 					Debug.Trace("ADT: cleared leftover slot " + slot + " of " + cats[c])
@@ -127,7 +133,8 @@ EndFunction
 ; The list choice in effect: the slot the plugin has at 100, or 0 for Vanilla.
 int Function AppliedPick(string asCategory)
 	int slot = 1
-	While slot <= SlotCount
+	int span = SlotSpan(asCategory)
+	While slot <= span
 		If ADT.GetPercent(asCategory, slot) == 100
 			Return slot
 		EndIf
@@ -139,7 +146,11 @@ EndFunction
 ; Sends a list choice to the plugin as one slot at 100 and every other slot at 0.
 Function SetAppliedPick(string asCategory, int aiPick)
 	int slot = 1
-	While slot <= SlotCount
+	int span = SlotSpan(asCategory)
+	If aiPick > span
+		span = aiPick
+	EndIf
+	While slot <= span
 		If slot == aiPick
 			ADT.SetPercent(asCategory, slot, 100)
 		Else

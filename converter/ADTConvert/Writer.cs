@@ -285,7 +285,12 @@ public sealed class Writer
             WriteFile(Path.Combine("Video", pack.Video), video.Read());
         }
         // Interface files keep their layout under the pack folder; the plugin opens them in place of the game's.
-        foreach (var file in interfaceFiles ?? [])
+        var menuArt = menuVideo != null || menuMusic != null;
+        if (!menuArt && interfaceFiles is { Count: > 0 })
+        {
+            _report.Info($"{source.Name}: {Report.Count(interfaceFiles.Count, "main menu interface file", "main menu interface files")} left to the mod; it ships no main menu video or music, so it is no MENU ART choice");
+        }
+        foreach (var file in (menuArt ? interfaceFiles : null) ?? [])
         {
             var copy = $"Interface\\ADT\\Packs\\{id}\\{file.GamePath["interface\\".Length..]}";
             WriteFile(copy, source.Files[file.Source].Read());
@@ -412,13 +417,6 @@ public sealed class Writer
             if (own != null) pack.Images.Add(own);
         }
 
-        foreach (var movie in packs.SelectMany(p => p.Movies).DistinctBy(m => m.Path.ToLowerInvariant()))
-        {
-            if (_game.ReadInterface(movie.Path) is not { } data) continue;
-            var copy = $"Interface\\ADT\\Packs\\vanilla\\{movie.Path["interface\\".Length..]}";
-            WriteFile(copy, data);
-            pack.Movies.Add((movie.Path, copy, movie.Category));
-        }
         if (packs.Any(p => p.Video != null))
         {
             // Copies the game's loose menu video unless it is a converted mod's copy.
@@ -431,7 +429,7 @@ public sealed class Writer
             }
             else
             {
-                _report.Warn("vanilla: the game's own main menu video could not be read apart from a converted mod's copy; convert again with that mod disabled so Vanilla in the corner box plays the game's own video");
+                _report.Warn("vanilla: the game's own main menu video could not be read apart from a converted mod's copy; disable every main menu mod in your mod manager, keep it ticked here and convert again, so Vanilla in MENU ART plays the game's own video");
             }
         }
         if (packs.Any(p => p.Music != null) && _game.ReadAudio("music\\special\\mus_maintheme") is { } theme)
@@ -885,8 +883,9 @@ public sealed class Writer
     private static string SectionTitle(string category) => Titles[Array.IndexOf(Categories, category)];
 
     /// <summary>Names how the MCM settings apply (one slider per pack on the page with most of its art, setting all of its art; one on/off
-    /// switch per pack on Other replacers; no Vanilla rows); part of the signature, so a conversion under another model resets the shares.</summary>
-    private const string SettingsModel = "settings-model-5";
+    /// switch per pack on Other replacers; no Vanilla rows; keys named after the pack, iPack_ and bPack_); part of the signature, so a
+    /// conversion under another model resets the shares.</summary>
+    private const string SettingsModel = "settings-model-6";
 
     /// <summary>The pack signature the MCM script compares with the stored one, resetting every share when they differ: each pack with
     /// its item count, and each share category's setting keys with the packs in slot order, so the signature changes exactly when
@@ -977,7 +976,7 @@ public sealed class Writer
             if (category == "other")
             {
                 // One on/off switch per pack.
-                for (var s = 1; s <= slotsPerCategory; s++) settings.Append($"bOn{s}=0\n");
+                foreach (var pack in slots) settings.Append($"bPack_{pack.Id}=0\n");
                 if (slots.Count > 0) pages.Add(new { pageDisplayName = "Other replacers", content = OtherPage(packs, slots) });
                 continue;
             }
@@ -991,7 +990,7 @@ public sealed class Writer
                 pipboyContent.Add(new { id = $"iPick:{sectionName}", type = "dropdown", text = label, help = Report.Count(slots.Count, "pack", "packs"), valueOptions = new { options = options.ToArray(), sourceType = "ModSettingInt" } });
                 continue;
             }
-            for (var s = 1; s <= slotsPerCategory; s++) settings.Append($"iSlot{s}=0\n");
+            foreach (var pack in slots) settings.Append($"iPack_{pack.Id}=0\n");
             if (slots.Count == 0) continue;
             object Slider(int slot)
             {
@@ -999,9 +998,9 @@ public sealed class Writer
                 if (loading)
                 {
                     var covers = pack.Images.Count(i => i.IsCover);
-                    return new { id = $"iSlot{slot}:{sectionName}", type = "slider", text = pack.Name, help = Report.Count(covers, "cover", "covers"), valueOptions = new { min = 0, max = 100, step = 1, sourceType = "ModSettingInt" } };
+                    return new { id = $"iPack_{pack.Id}:{sectionName}", type = "slider", text = pack.Name, help = Report.Count(covers, "cover", "covers"), valueOptions = new { min = 0, max = 100, step = 1, sourceType = "ModSettingInt" } };
                 }
-                return new { id = $"iSlot{slot}:{sectionName}", type = "slider", text = pack.Name, help = Reach(pack), valueOptions = new { min = 0, max = 100, step = 1, sourceType = "ModSettingInt" } };
+                return new { id = $"iPack_{pack.Id}:{sectionName}", type = "slider", text = pack.Name, help = Reach(pack), valueOptions = new { min = 0, max = 100, step = 1, sourceType = "ModSettingInt" } };
             }
             var locations = loading ? slots.Select(_ => "").ToList() : PageLocations(slots, category);
             var intro = loading
@@ -1072,7 +1071,7 @@ public sealed class Writer
             var splits = shared.GroupBy(g => 100 / (g.With.Count + 1)).OrderByDescending(g => g.Key).Select(g => $"{g.Sum(x => x.Count)} at {g.Key}%");
             content.Add(new
             {
-                id = $"bOn{s + 1}:ADT_Other",
+                id = $"bPack_{pack.Id}:ADT_Other",
                 type = "switcher",
                 text = pack.Name,
                 help = $"{Reach(pack)}{(shared.Count > 0 ? ". Shared: " + string.Join(", ", splits) : "")}",

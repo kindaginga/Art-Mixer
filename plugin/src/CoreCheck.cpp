@@ -93,7 +93,7 @@ namespace ADT::CoreCheck
 		logger::warn("own files: {} missing or changed: {}", damaged.size(), names);
 		std::string body = "These files of Art Distribution Tool are missing or changed:\n";
 		for (const auto& path : damaged) body += "\n" + path;
-		body += "\n\nOpen the converter (Tools\\ArtDistributionTool\\ArtDistributionToolConverter.exe in the mod), which restores them where it can, or reinstall Art Distribution Tool with your mod manager.";
+		body += "\n\nOpen the converter (Tools\\ArtDistributionTool\\Art Distribution Tool.exe in the mod), which restores them where it can, or reinstall Art Distribution Tool with your mod manager.";
 		F4SE::GetTaskInterface()->AddTask([body] {
 			if (auto* manager = RE::MessageMenuManager::GetSingleton(); manager) {
 				manager->Create("Art Distribution Tool", body.c_str(), new Notice(), RE::WARNING_TYPES::kDefault, "OK");

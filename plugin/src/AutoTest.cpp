@@ -195,15 +195,16 @@ namespace ADT::AutoTest
 		// Logs the Paintings slot 1 share in effect, in the menu's settings file and in the applied settings file.
 		void LogApplyState(std::string_view a_stage)
 		{
-			const auto menu = IniValue(std::filesystem::path("Data") / "MCM" / "Settings" / "ArtDistributionTool.ini", "ADT_Paintings", "iSlot1");
-			const auto applied = IniValue(std::filesystem::path("Data") / "F4SE" / "Plugins" / "ArtDistributionTool_Applied.ini", "ADT_paintings", "iSlot1");
+			const auto key = Settings::PackKey("paintings", 1);
+			const auto menu = IniValue(std::filesystem::path("Data") / "MCM" / "Settings" / "ArtDistributionTool.ini", "ADT_Paintings", key);
+			const auto applied = IniValue(std::filesystem::path("Data") / "F4SE" / "Plugins" / "ArtDistributionTool_Applied.ini", "ADT_paintings", key);
 			logger::info("autotest: {}: paintings slot 1 in effect {}, menu file {}, applied file {}", a_stage, Settings::Percent("paintings", 1), menu, applied);
 		}
 
 		// Moves a slider the way MCM does: MCM stores the value, and nothing else happens until the changes are applied.
 		void MenuSliderChange(int a_value, int a_slot = 1, std::string_view a_section = "ADT_Paintings")
 		{
-			const auto id = Settings::MenuKey("iSlot", a_slot, a_section);
+			const auto id = Settings::MenuKey(a_section, a_slot);
 			Console(fmt::format("cgf \"MCM.SetModSettingInt\" \"ArtDistributionTool\" \"{}\" {}", id, a_value));
 			std::this_thread::sleep_for(std::chrono::seconds(3));
 		}
@@ -214,7 +215,7 @@ namespace ADT::AutoTest
 			const auto path = std::filesystem::path("Data") / "MCM" / "Settings" / "ArtDistributionTool.ini";
 			// MCM leaves a key out of its file while it holds the default, 0 for a pack slot.
 			const auto read = [&](int a_slot, std::string_view a_category) {
-				const auto id = Settings::MenuKey("iSlot", a_slot, a_category);
+				const auto id = Settings::MenuKey(a_category, a_slot);
 				const auto colon = id.find(':');
 				const auto v = IniValue(path, std::string_view(id).substr(colon + 1), std::string_view(id).substr(0, colon));
 				return v == "(none)" ? std::string("0") : v;

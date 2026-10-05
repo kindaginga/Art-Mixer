@@ -14,11 +14,11 @@ namespace ADT::MainMenu
 	bool Install();
 	// Registers the main menu open/close sink and adds the plugin's entry to the main menu list; needs the UI singleton.
 	void OnGameDataReady();
-	// Replaces the options the selector lists and the current choice.
+	// Replaces the menu packs (index 0 Vanilla) and picks one for both the background and the music.
 	void SetOptions(std::vector<Option> a_options, int a_selected);
 	// The file an interface movie request opens instead (a pack's replacement of that movie), or empty (any thread).
 	std::string RedirectMovie(std::string_view a_url);
-	// Builds the option list from the installed packs and restores the saved choice.
+	// Builds the menu packs from the installed packs and restores the saved background and music picks.
 	void LoadFromPacks();
 	// True once the intro videos are over and the main menu is showing its loop video.
 	[[nodiscard]] bool AtMainMenu();
@@ -34,10 +34,16 @@ namespace ADT::MainMenu
 	[[nodiscard]] std::string EntryState();
 	// Acts as a press of the MENU ART entry, which opens the selector (game thread).
 	void PressEntry();
-	// Acts as a press of the selector's row for an option (game thread).
+	// Opens the BACKGROUNDS list and presses the row of the option at that list position (game thread).
 	void PressOption(int a_option);
+	// The position of the picked background in the BACKGROUNDS list (0 is Vanilla).
 	[[nodiscard]] int Selected();
+	// The number of options in the BACKGROUNDS list, Vanilla included.
 	[[nodiscard]] int OptionCount();
-	// Applies a choice by index and re-shows the main menu so the new video starts.
+	// Picks the background at a BACKGROUNDS list position, keeps the music pick, and re-creates the main menu so it shows.
 	void Select(int a_index);
+	// True when the background or the music pick is not Vanilla.
+	[[nodiscard]] bool AnyPicked();
+	// Sets both picks back to Vanilla when either is not.
+	void ResetPicks();
 }

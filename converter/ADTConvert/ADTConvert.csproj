@@ -6,7 +6,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>ArtDistributionToolConverter</AssemblyName>
+    <AssemblyName>Art Distribution Tool</AssemblyName>
     <Product>Art Distribution Tool</Product>
     <AssemblyTitle>Art Distribution Tool</AssemblyTitle>
     <GenerateAssemblyCompanyAttribute>false</GenerateAssemblyCompanyAttribute>

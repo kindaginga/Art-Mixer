@@ -1,5 +1,7 @@
 #include "Settings.h"
 
+#include "Packs.h"
+
 namespace ADT::Settings
 {
 	namespace
@@ -32,6 +34,17 @@ namespace ADT::Settings
 			return std::filesystem::path("Data") / "F4SE" / "Plugins" / (std::string(kModName) + "_Applied.ini");
 		}
 
+		// The slot of the pack a named key ("ipack_<id>" or "bpack_<id>", lowercase) holds in a category's list, 0 for none.
+		[[nodiscard]] int SlotOfKey(std::string_view a_category, std::string_view a_key)
+		{
+			const auto& slots = Packs::SlotsFor(a_category);
+			const auto id = a_key.substr(6);
+			for (std::size_t i = 0; i < slots.size(); ++i) {
+				if (Lower(slots[i]->id) == id) return static_cast<int>(i) + 1;
+			}
+			return 0;
+		}
+
 		// Applies one MCM ini file onto the in-memory values without locking.
 		void ApplyIni(const std::filesystem::path& a_path)
 		{
@@ -59,22 +72,24 @@ namespace ADT::Settings
 					if (key == "bnewlayouteachload") s_values.newLayoutEachLoad = *value != 0;
 					else if (key == "iseed") s_values.seed = *value;
 					++applied;
-				} else if (key.starts_with("bon")) {
-					// An Other replacers pack's switch: on is the whole share, off none.
-					const auto slot = ParseInt(key.substr(3));
-					if (section != "other" || !slot || *slot < 1 || *slot > kSlotsPerCategory) continue;
-					s_values.categories[section].percent[*slot - 1] = *value != 0 ? 100 : 0;
-					++applied;
-				} else if (key.starts_with("islot")) {
-					// The Other replacers page stores switches, not shares.
-					const auto slot = ParseInt(key.substr(5));
-					if (section == "other" || !slot || *slot < 1 || *slot > kSlotsPerCategory) continue;
-					s_values.categories[section].percent[*slot - 1] = std::clamp(*value, 0, 100);
+				} else if (key.starts_with("bpack_") || key.starts_with("ipack_")) {
+					// Takes switches (bPack_) only on Other replacers and shares (iPack_) only on the other pages.
+					if ((section == "other") != key.starts_with("bpack_")) continue;
+					const auto slot = SlotOfKey(section, key);
+					if (slot < 1 || slot > kMaxSlots) continue;
+					auto& percent = s_values.categories[section].percent;
+					if (static_cast<int>(percent.size()) < slot) percent.resize(slot, 0);
+					// A switch on is the whole share, off none.
+					percent[slot - 1] = section == "other" ? (*value != 0 ? 100 : 0) : std::clamp(*value, 0, 100);
 					++applied;
 				} else if (key == "ipick") {
 					// A list page: the chosen slot gets everything, 0 means vanilla.
 					auto& percent = s_values.categories[section].percent;
-					for (int i = 0; i < kSlotsPerCategory; ++i) percent[i] = (*value == i + 1) ? 100 : 0;
+					std::fill(percent.begin(), percent.end(), 0);
+					if (*value >= 1 && *value <= kMaxSlots) {
+						if (static_cast<int>(percent.size()) < *value) percent.resize(*value, 0);
+						percent[*value - 1] = 100;
+					}
 					++applied;
 				}
 			}
@@ -106,9 +121,18 @@ namespace ADT::Settings
 		return category;
 	}
 
-	std::string MenuKey(std::string_view a_prefix, int a_slot, std::string_view a_category)
+	std::string PackKey(std::string_view a_category, int a_slot)
 	{
-		return fmt::format("{}{}:{}", a_prefix, a_slot, a_category);
+		const auto category = NormalizeCategory(a_category);
+		const auto& slots = Packs::SlotsFor(category);
+		if (a_slot < 1 || a_slot > static_cast<int>(slots.size())) return {};
+		return fmt::format("{}{}", category == "other" ? "bPack_" : "iPack_", slots[a_slot - 1]->id);
+	}
+
+	std::string MenuKey(std::string_view a_section, int a_slot)
+	{
+		const auto key = PackKey(a_section, a_slot);
+		return key.empty() ? std::string() : fmt::format("{}:{}", key, a_section);
 	}
 
 	namespace
@@ -185,7 +209,12 @@ namespace ADT::Settings
 			text += fmt::format("[ADT_Main]\nbNewLayoutEachLoad={}\niSeed={}\n", s_values.newLayoutEachLoad ? 1 : 0, s_values.seed);
 			for (const auto& [category, settings] : s_values.categories) {
 				text += fmt::format("\n[{}{}]\n", kSectionPrefix, category);
-				for (int i = 0; i < kSlotsPerCategory; ++i) text += category == "other" ? fmt::format("bOn{}={}\n", i + 1, settings.percent[i] == 100 ? 1 : 0) : fmt::format("iSlot{}={}\n", i + 1, settings.percent[i]);
+				for (int i = 0; i < static_cast<int>(settings.percent.size()); ++i) {
+					const auto key = PackKey(category, i + 1);
+					// Skips a slot past the category's pack list.
+					if (key.empty()) continue;
+					text += category == "other" ? fmt::format("{}={}\n", key, settings.percent[i] == 100 ? 1 : 0) : fmt::format("{}={}\n", key, settings.percent[i]);
+				}
 			}
 		}
 		const auto path = AppliedPath();
@@ -208,17 +237,26 @@ namespace ADT::Settings
 
 	int Percent(std::string_view a_category, int a_slot)
 	{
-		if (a_slot < 1 || a_slot > kSlotsPerCategory) return 0;
+		if (a_slot < 1) return 0;
 		std::scoped_lock lock(s_mutex);
 		const auto it = s_values.categories.find(NormalizeCategory(a_category));
-		return it == s_values.categories.end() ? 0 : it->second.percent[a_slot - 1];
+		return it == s_values.categories.end() || a_slot > static_cast<int>(it->second.percent.size()) ? 0 : it->second.percent[a_slot - 1];
 	}
 
 	void SetPercent(std::string_view a_category, int a_slot, int a_value)
 	{
-		if (a_slot < 1 || a_slot > kSlotsPerCategory) return;
+		if (a_slot < 1 || a_slot > kMaxSlots) return;
 		std::scoped_lock lock(s_mutex);
-		s_values.categories[NormalizeCategory(a_category)].percent[a_slot - 1] = std::clamp(a_value, 0, 100);
+		auto& percent = s_values.categories[NormalizeCategory(a_category)].percent;
+		if (static_cast<int>(percent.size()) < a_slot) percent.resize(a_slot, 0);
+		percent[a_slot - 1] = std::clamp(a_value, 0, 100);
+	}
+
+	int StoredSlots(std::string_view a_category)
+	{
+		std::scoped_lock lock(s_mutex);
+		const auto it = s_values.categories.find(NormalizeCategory(a_category));
+		return it == s_values.categories.end() ? 0 : static_cast<int>(it->second.percent.size());
 	}
 
 	void SetSeed(int a_seed)

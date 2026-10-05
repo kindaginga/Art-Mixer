@@ -2,12 +2,12 @@
 
 namespace ADT::Settings
 {
-	inline constexpr int kSlotsPerCategory = 10;
+	inline constexpr int kMaxSlots = 128;  // slots one page or list may have: the Papyrus array limit
 	inline constexpr std::string_view kModName = "ArtDistributionTool"sv;
 
 	struct CategorySettings
 	{
-		std::array<int, kSlotsPerCategory> percent{};
+		std::vector<int> percent;  // one share per slot, as many slots as the settings files name
 	};
 
 	struct Values
@@ -29,6 +29,8 @@ namespace ADT::Settings
 	// The share of one slot of a category in effect (0 for an unknown category or slot).
 	[[nodiscard]] int Percent(std::string_view a_category, int a_slot);
 	void SetPercent(std::string_view a_category, int a_slot, int a_value);
+	// The number of slots a category has values for in effect (0 for an unknown category).
+	[[nodiscard]] int StoredSlots(std::string_view a_category);
 	void SetSeed(int a_seed);
 	[[nodiscard]] int Seed();
 	// MCM section names carry this prefix (lowercase here); category names drop it.
@@ -39,6 +41,8 @@ namespace ADT::Settings
 	// A path relative to one of Data's folders ("materials", "textures", "meshes"): lowercase, backslashes, without leading
 	// slashes, "data\" or the folder itself.
 	[[nodiscard]] std::string RelativePath(std::string_view a_path, std::string_view a_folder);
-	// MCM setting id "<prefix><slot>:<Section>".
-	[[nodiscard]] std::string MenuKey(std::string_view a_prefix, int a_slot, std::string_view a_category);
+	// The settings key of a category's slot, named after its pack: "bPack_<id>" on Other replacers, "iPack_<id>" elsewhere; empty past the pack list.
+	[[nodiscard]] std::string PackKey(std::string_view a_category, int a_slot);
+	// MCM setting id "<PackKey>:<Section>", empty past the pack list.
+	[[nodiscard]] std::string MenuKey(std::string_view a_section, int a_slot);
 }

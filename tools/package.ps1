@@ -77,8 +77,6 @@ Copy-Item (Join-Path $root "mod\Data\Scripts") (Join-Path $core "Data\Scripts") 
 Copy-Item (Join-Path $root "mod\Data\MCM") (Join-Path $core "Data\MCM") -Recurse
 Copy-Item (Join-Path $root "mod\Data\ADT") (Join-Path $core "Data\ADT") -Recurse
 Copy-Item (Join-Path $root "mod\fomod\*") (Join-Path $core "fomod\")
-Copy-Item (Join-Path $root "mod\Art Distribution Tool - Read Me.txt") $core
-Copy-Item (Join-Path $conv "THIRD-PARTY-NOTICES.txt") $core
 
 # The list of the core mod's files with size and SHA-256, which the converter and the plugin check the installed mod against.
 # The converter's packs replace the three replaceable files where both mods are deployed into one folder.

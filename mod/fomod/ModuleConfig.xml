@@ -7,7 +7,7 @@
         <group name="Core" type="SelectAll">
           <plugins order="Explicit">
             <plugin name="Art Distribution Tool core">
-              <description>Installs the F4SE plugin (one DLL for game versions 1.10.163, 1.10.984, 1.11.169 and 1.11.240), the ArtDistributionTool.esl quest, the MCM menu and the vanilla art catalog. Convert your art mods with the converter afterwards.&#10;&#10;Thank you for trying our mod, enjoy!</description>
+              <description>Installs the F4SE plugin (one DLL for game versions 1.10.163, 1.10.984, 1.11.169 and 1.11.240), the ArtDistributionTool.esl quest, the MCM menu and the vanilla art catalog. Convert your art mods with the converter afterwards.&#10;&#10;Thank you for trying my mod.</description>
               <files>
                 <folder source="Data" destination="" priority="0" />
               </files>

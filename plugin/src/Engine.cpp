@@ -23,15 +23,17 @@ namespace ADT::Engine
 			std::size_t applyMaterialData;
 			std::size_t shaderDataCtor;
 			std::size_t shaderDataDtor;
+			std::size_t lightingPropertyCtor;
+			std::size_t effectPropertyCtor;
 		};
 
 		[[nodiscard]] std::optional<MaterialFunctions> FunctionsForRuntime(const REL::Version& a_version)
 		{
 			const auto v = a_version.string();
-			if (v == "1-10-163-0") return MaterialFunctions{ 0x1C9D170, 0x27C4550, 0x27BD630, 0x3901F0 };
-			if (v == "1-10-984-0") return MaterialFunctions{ 0x168EBF0, 0x2014440, 0x200D340, 0x543AC0 };
-			if (v == "1-11-169-0") return MaterialFunctions{ 0x17A5110, 0x2164FE0, 0x215DEE0, 0x595010 };
-			if (v == "1-11-240-0") return MaterialFunctions{ 0x17A9D80, 0x21715E0, 0x216A4E0, 0x597D70 };
+			if (v == "1-10-163-0") return MaterialFunctions{ 0x1C9D170, 0x27C4550, 0x27BD630, 0x3901F0, 0x27CC880, 0x27CAAC0 };
+			if (v == "1-10-984-0") return MaterialFunctions{ 0x168EBF0, 0x2014440, 0x200D340, 0x543AC0, 0x201BF90, 0x201A330 };
+			if (v == "1-11-169-0") return MaterialFunctions{ 0x17A5110, 0x2164FE0, 0x215DEE0, 0x595010, 0x216CB30, 0x216AED0 };
+			if (v == "1-11-240-0") return MaterialFunctions{ 0x17A9D80, 0x21715E0, 0x216A4E0, 0x597D70, 0x2179130, 0x21774D0 };
 			return std::nullopt;
 		}
 
@@ -360,6 +362,87 @@ namespace ADT::Engine
 		return path.empty() ? std::string() : "@" + TexturePath(path);
 	}
 
+	namespace
+	{
+		// Materials replaced on a geometry, kept alive until every draw queued before the change has run.
+		struct Retired
+		{
+			std::uint8_t* material;
+			bool lighting;
+			std::chrono::steady_clock::time_point since;
+		};
+		std::mutex s_retiredLock;
+		std::vector<Retired> s_retired;
+		bool s_releaseQueued{ false };
+		std::atomic<int> s_releaseLogs{ 0 };
+		constexpr auto kRetireDelay = std::chrono::seconds(1);
+
+		std::atomic<int> s_holderLogs{ 0 };
+
+		// Hands the reference taken before a material change to a new shader property of the material's own kind and destroys that property, so the game releases the material through its own code.
+		void Release(std::uint8_t* a_material, bool a_lighting)
+		{
+			const auto size = a_lighting ? std::size_t{ 0xE8 } : std::size_t{ 0x88 };
+			auto* holder = static_cast<std::uint8_t*>(RE::malloc(size));
+			if (!holder) return;
+			using PropertyCtor = void* (*)(void*);
+			const auto base = REL::Module::get().base();
+			reinterpret_cast<PropertyCtor>(base + (a_lighting ? s_functions->lightingPropertyCtor : s_functions->effectPropertyCtor))(holder);
+			auto*& slot = *reinterpret_cast<std::uint8_t**>(holder + 0x58);
+			if (s_holderLogs.fetch_add(1) < 5) logger::info("engine: release holder {} ({}) starts with material {}", fmt::ptr(holder), a_lighting ? "lighting" : "effect", fmt::ptr(slot));
+			RE::NiPointer<RE::NiRefObject> owner{ reinterpret_cast<RE::NiRefObject*>(holder) };
+			if (slot) {
+				logger::warn("engine: a new shader property already holds material {}; material {} stays held", fmt::ptr(slot), fmt::ptr(a_material));
+				return;
+			}
+			slot = a_material;
+		}
+
+		void QueueRelease();
+
+		// On the game thread: releases the materials retired at least kRetireDelay ago and queues the rest again.
+		void ReleaseRetired()
+		{
+			std::vector<Retired> due;
+			bool more = false;
+			{
+				std::scoped_lock lock(s_retiredLock);
+				const auto now = std::chrono::steady_clock::now();
+				std::erase_if(s_retired, [&](const Retired& a_entry) {
+					if (now - a_entry.since < kRetireDelay) return false;
+					due.push_back(a_entry);
+					return true;
+				});
+				more = !s_retired.empty();
+				s_releaseQueued = more;
+			}
+			for (const auto& entry : due) Release(entry.material, entry.lighting);
+			if (!due.empty() && s_releaseLogs.fetch_add(1) < 20) logger::info("engine: released {} replaced materials", due.size());
+			if (more) QueueRelease();
+		}
+
+		// Runs ReleaseRetired on the game thread once kRetireDelay has passed.
+		void QueueRelease()
+		{
+			std::thread([] {
+				std::this_thread::sleep_for(kRetireDelay);
+				F4SE::GetTaskInterface()->AddTask([] { ReleaseRetired(); });
+			}).detach();
+		}
+
+		void RetireMaterial(std::uint8_t* a_material, bool a_lighting)
+		{
+			bool queue = false;
+			{
+				std::scoped_lock lock(s_retiredLock);
+				s_retired.push_back({ a_material, a_lighting, std::chrono::steady_clock::now() });
+				queue = !s_releaseQueued;
+				s_releaseQueued = true;
+			}
+			if (queue) QueueRelease();
+		}
+	}
+
 	bool ApplyMaterial(RE::NiAVObject* a_geometry, const std::string& a_materialFile, int a_invalidate)
 	{
 		if (!s_functions || !a_geometry) return false;
@@ -378,6 +461,15 @@ namespace ADT::Engine
 
 		const bool trace = s_tracing.load() && s_traceCount.fetch_add(1) < 2000;
 		if (trace) logger::info("engine: [thread {}] loading {}", GetCurrentThreadId(), file);
+		// The geometry's current material gets a reference of its own, so the change cannot free it while a queued draw still reads it.
+		auto* previousShader = AnyShader(a_geometry);
+		static const REL::Relocation<const RE::NiRTTI*> lightingShaderRtti{ RE::Ni_RTTI::BSLightingShaderProperty };
+		static const REL::Relocation<const RE::NiRTTI*> effectShaderRtti{ RE::Ni_RTTI::BSEffectShaderProperty };
+		const auto* previousRtti = previousShader ? previousShader->GetRTTI() : nullptr;
+		const bool previousLighting = previousRtti && previousRtti->IsKindOf(lightingShaderRtti.get());
+		const bool previousEffect = previousRtti && previousRtti->IsKindOf(effectShaderRtti.get());
+		auto* previous = previousShader && (previousLighting || previousEffect) ? reinterpret_cast<std::uint8_t*>(previousShader->material) : nullptr;
+		if (previous) InterlockedIncrement(reinterpret_cast<volatile LONG*>(previous + 0x08));
 		alignas(16) std::uint8_t shaderData[0x1E0]{};
 		ctor(shaderData);
 		const auto status = loadMaterialFile(file.c_str(), shaderData, 0);
@@ -390,6 +482,7 @@ namespace ADT::Engine
 			logger::warn("engine: LoadMaterialFile('{}') returned {}", a_materialFile, status);
 		}
 		dtor(shaderData);
+		if (previous) RetireMaterial(previous, previousLighting);
 		if (ok) {
 			// The engine keys the renderer's material lookup on the property name, so it has to match the new file.
 			if (!Settings::Lower(file).ends_with(".bgem") && DiffuseName(a_geometry).empty()) {

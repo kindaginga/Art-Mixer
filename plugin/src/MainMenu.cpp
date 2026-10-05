@@ -18,8 +18,9 @@ namespace ADT::MainMenu
 		BinkOpenFn s_originalBinkOpen{ nullptr };
 		std::mutex s_mutex;
 		std::string s_menuVideo;
-		std::vector<Option> s_options;
-		int s_selected{ 0 };
+		std::vector<Option> s_options;              // index 0 is Vanilla; the rest are packs with a menu video, menu music or both
+		int s_bgPick{ 0 };                          // index in s_options of the picked background
+		int s_musicPick{ 0 };                       // index in s_options of the picked music
 		std::atomic<int> s_opens{ 0 };
 		std::atomic<bool> s_loopOpen{ false };    // the menu loop video has been opened: the intro is over and the real menu is up
 		std::atomic<bool> s_skipStartup{ false };   // autotest: startup videos are refused so the menu comes up at once
@@ -73,6 +74,41 @@ namespace ADT::MainMenu
 			logger::info("mainmenu: menu theme -> '{}'", text);
 		}
 
+		// The three lists of the MENU ART selector.
+		enum class List
+		{
+			Themes,
+			Backgrounds,
+			Music
+		};
+
+		// Indices into s_options a list shows, Vanilla first: themes have a video and music, backgrounds a video, music a theme (caller holds s_mutex).
+		[[nodiscard]] std::vector<int> ListEntries(List a_list)
+		{
+			std::vector<int> out;
+			for (int i = 0; i < static_cast<int>(s_options.size()); ++i) {
+				const bool video = !s_options[i].video.empty();
+				const bool music = !s_options[i].music.empty();
+				const bool shown = a_list == List::Themes ? video && music : a_list == List::Backgrounds ? video : music;
+				if (i == 0 || shown) out.push_back(i);
+			}
+			return out;
+		}
+
+		// Points the menu video and the menu music at the current picks (caller holds s_mutex).
+		void ApplyPicks()
+		{
+			const auto count = static_cast<int>(s_options.size());
+			s_menuVideo = s_bgPick > 0 && s_bgPick < count ? s_options[s_bgPick].video : count > 0 ? s_options[0].video : std::string();
+			SetTheme(s_musicPick > 0 && s_musicPick < count ? s_options[s_musicPick].music : count > 0 ? s_options[0].music : std::string());
+		}
+
+		// The pack id of an option, "" for Vanilla (caller holds s_mutex).
+		[[nodiscard]] std::string OptionId(int a_index)
+		{
+			return a_index >= 0 && a_index < static_cast<int>(s_optionIds.size()) ? s_optionIds[a_index] : std::string();
+		}
+
 		// The chosen pack id lives in the plugin's own state file, since the main menu runs no Papyrus.
 		[[nodiscard]] std::filesystem::path StatePath()
 		{
@@ -86,7 +122,8 @@ namespace ADT::MainMenu
 				std::ifstream in(StatePath());
 				if (in) { try { json = nlohmann::json::parse(in); } catch (...) { json = nlohmann::json::object(); } }
 				if (!json.is_object()) json = nlohmann::json::object();
-				json["menuVideo"] = (s_selected >= 0 && s_selected < static_cast<int>(s_optionIds.size())) ? s_optionIds[s_selected] : "";
+				json["menuVideo"] = OptionId(s_bgPick);
+				json["menuMusic"] = OptionId(s_musicPick);
 				std::filesystem::create_directories(StatePath().parent_path());
 				std::ofstream out(StatePath());
 				out << json.dump(1);
@@ -95,14 +132,16 @@ namespace ADT::MainMenu
 			}
 		}
 
-		[[nodiscard]] std::string LoadStateMenuVideo()
+		// The saved background pack id and, when saved, the music pack id; a state from before separate music has no music id.
+		[[nodiscard]] std::pair<std::string, std::optional<std::string>> LoadStatePicks()
 		{
 			try {
 				std::ifstream in(StatePath());
 				if (!in) return {};
 				const auto json = nlohmann::json::parse(in);
-				const auto it = json.find("menuVideo");
-				return it != json.end() && it->is_string() ? it->get<std::string>() : std::string();
+				const auto video = json.find("menuVideo");
+				const auto music = json.find("menuMusic");
+				return { video != json.end() && video->is_string() ? video->get<std::string>() : std::string(), music != json.end() && music->is_string() ? std::optional<std::string>(music->get<std::string>()) : std::nullopt };
 			} catch (...) {
 				return {};
 			}
@@ -176,10 +215,13 @@ namespace ADT::MainMenu
 		std::atomic<int> s_entryLogs{ 0 };
 		bool s_selectorOpen{ false };                             // the list shows the options instead of the game's entries (game thread)
 		std::vector<RE::Scaleform::GFx::Value> s_savedEntries;  // the game's entries while the selector shows
+		std::atomic<bool> s_resetPending{ false };              // a pick asked the engine to re-create the menu; set until the menu closes
 
 		constexpr auto kEntryText = "MENU ART";
 		constexpr int kBackIndex = 98;     // the selector's BACK row
-		constexpr int kOptionBase = 200;   // the selector's option rows: kOptionBase + option index
+		constexpr int kMoreIndex = 97;     // the selector's MORE row, the next page of a long list
+		constexpr int kOptionBase = 200;   // a list's option rows: kOptionBase + row on the page
+		constexpr int kListBase = 300;     // the list choice rows: kListBase + list
 
 		// The main menu's list object, or an undefined value when the menu or its list is not up.
 		[[nodiscard]] RE::Scaleform::GFx::Value MenuList(RE::Scaleform::GFx::Movie** a_movie = nullptr)
@@ -313,7 +355,88 @@ namespace ADT::MainMenu
 			}
 		}
 
-		// Swaps the game's entries for one row per option, the current one marked, and BACK; the game's entries are kept for BACK.
+		[[nodiscard]] std::pair<int, int> RowClips(RE::Scaleform::GFx::Value& a_list);
+		void Pick(int a_background, int a_music);
+
+		bool s_inList{ false };     // the selector shows a list's options instead of the list choice (game thread)
+		List s_list{ List::Themes };  // the list the selector shows while s_inList (game thread)
+		int s_page{ 0 };            // the page of that list on show (game thread)
+		int s_pages{ 1 };           // the number of pages of that list (game thread)
+		int s_pageStart{ 0 };       // the list position of the page's first row (game thread)
+		int s_pageCount{ 0 };       // the number of option rows on the page (game thread)
+
+		// Replaces whatever the list shows with the given rows, cutting names that do not fit; a_suffixes are kept whole.
+		void ShowSelectorRows(const std::vector<std::string>& a_names, const std::vector<std::string>& a_suffixes, const std::vector<std::int32_t>& a_indices)
+		{
+			RE::Scaleform::GFx::Movie* movie = nullptr;
+			auto list = MenuList(&movie);
+			RE::Scaleform::GFx::Value entries;
+			if (!list.IsObject() || !list.GetMember("entryList", &entries) || !entries.IsArray()) return;
+			const auto shown = ScanEntries(movie, entries).size();
+			std::vector<RE::Scaleform::GFx::Value> rows;
+			for (std::size_t i = 0; i < a_names.size(); ++i) {
+				RE::Scaleform::GFx::Value row;
+				movie->CreateObject(&row);
+				row.SetMember("text", RE::Scaleform::GFx::Value((a_names[i] + a_suffixes[i]).c_str()));
+				row.SetMember("index", RE::Scaleform::GFx::Value(a_indices[i]));
+				rows.push_back(row);
+			}
+			s_selectorOpen = true;
+			ShowRows(list, entries, shown, rows);
+			FitSelectorRows(list, rows, a_names, a_suffixes);
+		}
+
+		// Shows the list choice: THEMES, BACKGROUNDS, MUSIC and BACK.
+		void ShowChoice()
+		{
+			s_inList = false;
+			ShowSelectorRows({ "THEMES", "BACKGROUNDS", "MUSIC", "BACK" }, { "", "", "", "" }, { kListBase + static_cast<std::int32_t>(List::Themes), kListBase + static_cast<std::int32_t>(List::Backgrounds), kListBase + static_cast<std::int32_t>(List::Music), kBackIndex });
+			logger::info("mainmenu: selector shows the list choice");
+		}
+
+		// Shows one page of a list: its options with the current pick marked, MORE when the list needs more pages, and BACK.
+		void ShowList(List a_list, int a_page)
+		{
+			RE::Scaleform::GFx::Movie* movie = nullptr;
+			auto menuList = MenuList(&movie);
+			if (!menuList.IsObject()) return;
+			const int clips = std::max(3, RowClips(menuList).first);
+			std::vector<std::string> names, suffixes;
+			std::vector<std::int32_t> indices;
+			{
+				std::scoped_lock lock(s_mutex);
+				const auto entries = ListEntries(a_list);
+				const int count = static_cast<int>(entries.size());
+				const int perPage = std::max(1, count + 1 <= clips ? count : clips - 2);
+				s_pages = std::max(1, (count + perPage - 1) / perPage);
+				s_page = ((a_page % s_pages) + s_pages) % s_pages;
+				s_pageStart = s_page * perPage;
+				s_pageCount = std::min(perPage, count - s_pageStart);
+				for (int row = 0; row < s_pageCount; ++row) {
+					const int option = entries[s_pageStart + row];
+					std::string name = s_options[option].name;
+					for (auto& c : name) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+					const bool marked = a_list == List::Themes ? option == s_bgPick && option == s_musicPick : a_list == List::Backgrounds ? option == s_bgPick : option == s_musicPick;
+					names.push_back(name);
+					suffixes.push_back(marked ? " *" : "");
+					indices.push_back(kOptionBase + row);
+				}
+			}
+			if (s_pages > 1) {
+				names.push_back("MORE");
+				suffixes.push_back(fmt::format(" ({}/{})", s_page + 1, s_pages));
+				indices.push_back(kMoreIndex);
+			}
+			names.push_back("BACK");
+			suffixes.push_back("");
+			indices.push_back(kBackIndex);
+			s_inList = true;
+			s_list = a_list;
+			ShowSelectorRows(names, suffixes, indices);
+			logger::info("mainmenu: selector shows list {} page {} of {} ({} options, {} row clips)", static_cast<int>(a_list), s_page + 1, s_pages, s_pageCount, clips);
+		}
+
+		// Swaps the game's entries for the list choice; the game's entries are kept for BACK.
 		void OpenSelector()
 		{
 			RE::Scaleform::GFx::Movie* movie = nullptr;
@@ -323,32 +446,8 @@ namespace ADT::MainMenu
 			auto scanned = ScanEntries(movie, entries);
 			s_savedEntries.clear();
 			for (auto& item : scanned) s_savedEntries.push_back(item.object);
-			std::vector<RE::Scaleform::GFx::Value> rows;
-			std::vector<std::string> names, suffixes;
-			{
-				std::scoped_lock lock(s_mutex);
-				for (std::size_t i = 0; i < s_options.size(); ++i) {
-					std::string name = s_options[i].name;
-					for (auto& c : name) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-					names.push_back(name);
-					suffixes.push_back(static_cast<int>(i) == s_selected ? " *" : "");
-					name += suffixes.back();
-					RE::Scaleform::GFx::Value row;
-					movie->CreateObject(&row);
-					row.SetMember("text", RE::Scaleform::GFx::Value(name.c_str()));
-					row.SetMember("index", RE::Scaleform::GFx::Value(kOptionBase + static_cast<std::int32_t>(i)));
-					rows.push_back(row);
-				}
-			}
-			RE::Scaleform::GFx::Value back;
-			movie->CreateObject(&back);
-			back.SetMember("text", RE::Scaleform::GFx::Value("BACK"));
-			back.SetMember("index", RE::Scaleform::GFx::Value(kBackIndex));
-			rows.push_back(back);
-			s_selectorOpen = true;
-			ShowRows(list, entries, scanned.size(), rows);
-			FitSelectorRows(list, rows, names, suffixes);
-			logger::info("mainmenu: selector opened with {} option rows in place of {} entries", rows.size() - 1, scanned.size());
+			logger::info("mainmenu: selector opened in place of {} entries", scanned.size());
+			ShowChoice();
 		}
 
 		// Puts the game's entries back.
@@ -358,33 +457,66 @@ namespace ADT::MainMenu
 			auto list = MenuList(&movie);
 			RE::Scaleform::GFx::Value entries;
 			s_selectorOpen = false;
+			s_inList = false;
 			if (!list.IsObject() || !list.GetMember("entryList", &entries) || !entries.IsArray()) return;
+			// Leaves the list as it is when no game entries are kept.
+			if (s_savedEntries.empty()) {
+				logger::info("mainmenu: selector close skipped; no game entries kept to restore");
+				return;
+			}
 			const auto rows = ScanEntries(movie, entries).size();
 			ShowRows(list, entries, rows, s_savedEntries);
 			logger::info("mainmenu: selector closed; {} entries restored", s_savedEntries.size());
 			s_savedEntries.clear();
 		}
 
-		// Acts on a pressed row of this plugin's: the entry opens the selector, BACK closes it, an option row switches to it.
+		// Acts on a pressed row of this plugin's: the entry opens the selector, a list row opens that list, MORE turns the page,
+		// BACK goes up one level, an option row picks that option.
 		void OnRowPressed(int a_index)
 		{
+			// Ignores every press while the engine re-creates the menu for a pick.
+			if (s_resetPending.load()) {
+				logger::info("mainmenu: row {} pressed while the menu reloads for a pick; ignored", a_index);
+				return;
+			}
 			if (a_index == kEntryIndex) {
 				PlayMenuSound("PlayOKSound");
 				OpenSelector();
 			} else if (a_index == kBackIndex) {
 				PlayMenuSound("PlayCancelSound");
-				CloseSelector();
-			} else if (a_index >= kOptionBase) {
-				const int option = a_index - kOptionBase;
+				if (s_inList) {
+					ShowChoice();
+				} else {
+					CloseSelector();
+				}
+			} else if (a_index >= kListBase && a_index <= kListBase + static_cast<int>(List::Music)) {
 				PlayMenuSound("PlayOKSound");
-				if (option == Selected()) {
+				ShowList(static_cast<List>(a_index - kListBase), 0);
+			} else if (a_index == kMoreIndex) {
+				PlayMenuSound("PlayOKSound");
+				ShowList(s_list, s_page + 1);
+			} else if (a_index >= kOptionBase && a_index < kOptionBase + s_pageCount && s_inList) {
+				int background = 0, music = 0;
+				{
+					std::scoped_lock lock(s_mutex);
+					const auto entries = ListEntries(s_list);
+					const int position = s_pageStart + (a_index - kOptionBase);
+					if (position >= static_cast<int>(entries.size())) return;
+					const int option = entries[position];
+					background = s_list == List::Music ? s_bgPick : option;
+					music = s_list == List::Backgrounds ? s_musicPick : option;
+					if (background == s_bgPick && music == s_musicPick) background = -1;
+				}
+				PlayMenuSound("PlayOKSound");
+				if (background < 0) {
 					CloseSelector();
 					return;
 				}
-				logger::info("mainmenu: selector row pressed -> option {}", option);
+				logger::info("mainmenu: selector row pressed -> list {}, row {}", static_cast<int>(s_list), a_index - kOptionBase);
 				s_selectorOpen = false;
+				s_inList = false;
 				s_savedEntries.clear();
-				Select(option);
+				Pick(background, music);
 			}
 		}
 
@@ -496,6 +628,7 @@ namespace ADT::MainMenu
 				const bool b = list.Invoke("addEventListener", nullptr, press, 2);
 				s_listenedMovie = movie;
 				s_selectorOpen = false;
+				s_inList = false;
 				s_savedEntries.clear();
 				logger::info("mainmenu: list listeners attached (items created {}, press {})", a, b);
 				GrowList(movie, list);
@@ -517,8 +650,10 @@ namespace ADT::MainMenu
 						F4SE::GetTaskInterface()->AddTask([] { AttachToMenu(); });
 					} else {
 						s_loopOpen.store(false);
+						s_resetPending.store(false);
 						s_listenedMovie = nullptr;
 						s_selectorOpen = false;
+						s_inList = false;
 						s_savedEntries.clear();
 					}
 				} else if (std::string_view(name) == "LoadingMenu") {
@@ -536,6 +671,36 @@ namespace ADT::MainMenu
 			}
 		};
 		MenuSink s_sink;
+
+		// Sets the background and music picks, stores them and re-creates the main menu so they show.
+		void Pick(int a_background, int a_music)
+		{
+			{
+				std::scoped_lock lock(s_mutex);
+				const int count = static_cast<int>(s_options.size());
+				if (a_background < 0 || a_background >= count || a_music < 0 || a_music >= count) return;
+				s_bgPick = a_background;
+				s_musicPick = a_music;
+				ApplyPicks();
+				logger::info("mainmenu: picked background '{}' and music '{}' -> video '{}', music '{}'", s_options[s_bgPick].name, s_options[s_musicPick].name, s_menuVideo, s_options[s_musicPick].music);
+				SaveState();
+			}
+			// The main menu opens its video when it is created. Hiding and showing the menu re-creates it with a dead list, so the
+			// engine's own return-to-main-menu sequence is requested instead, the path the game takes when leaving a save.
+			// That sequence ends a running game, so from inside one the picks are only stored for the next menu.
+			auto* ui = RE::UI::GetSingleton();
+			if (!ui || !ui->GetMenuOpen("MainMenu")) {
+				logger::info("mainmenu: picks stored; the menu picks them up when it is next created");
+				return;
+			}
+			s_resetPending.store(true);
+			F4SE::GetTaskInterface()->AddTask([] {
+				if (auto* game = RE::Main::GetSingleton(); game) {
+					game->resetGame = true;
+					logger::info("mainmenu: game reset requested for the menu change");
+				}
+			});
+		}
 	}
 
 	bool Install()
@@ -589,10 +754,10 @@ namespace ADT::MainMenu
 		std::scoped_lock lock(s_mutex);
 		s_options = std::move(a_options);
 		s_optionIds.assign(s_options.size(), "");
-		s_selected = a_selected;
 		const bool valid = a_selected >= 0 && a_selected < static_cast<int>(s_options.size());
-		s_menuVideo = valid ? s_options[a_selected].video : std::string();
-		SetTheme(valid ? s_options[a_selected].music : std::string());
+		s_bgPick = valid ? a_selected : 0;
+		s_musicPick = valid ? a_selected : 0;
+		ApplyPicks();
 	}
 
 	std::string EntryState()
@@ -615,7 +780,9 @@ namespace ADT::MainMenu
 
 	void PressOption(int a_option)
 	{
-		OnRowPressed(kOptionBase + a_option);
+		if (!s_inList || s_list != List::Backgrounds) ShowList(List::Backgrounds, 0);
+		while (a_option >= s_pageStart + s_pageCount && s_page + 1 < s_pages) ShowList(List::Backgrounds, s_page + 1);
+		OnRowPressed(kOptionBase + a_option - s_pageStart);
 	}
 
 	void LoadFromPacks()
@@ -625,22 +792,29 @@ namespace ADT::MainMenu
 		std::vector<Option> options{ { "Vanilla", vanilla && !vanilla->video.empty() ? "Data\\Video\\" + vanilla->video : std::string(), vanilla ? vanilla->music : std::string() } };
 		std::vector<std::string> ids{ "" };
 		for (const auto& pack : Packs::All()) {
-			if (pack.vanilla) continue;
-			const bool menuMovie = std::any_of(pack.movies.begin(), pack.movies.end(), [](const Packs::Movie& m) { return m.category == "mainmenu"; });
-			if (pack.video.empty() && pack.music.empty() && !menuMovie) continue;
-			// A pack without a video or a theme plays the Vanilla option's.
-			options.push_back({ pack.name, pack.video.empty() ? options.front().video : "Data\\Video\\" + pack.video, pack.music.empty() ? options.front().music : pack.music });
+			if (pack.vanilla || (pack.video.empty() && pack.music.empty())) continue;
+			options.push_back({ pack.name, pack.video.empty() ? std::string() : "Data\\Video\\" + pack.video, pack.music });
 			ids.push_back(pack.id);
 		}
-		const auto saved = LoadStateMenuVideo();
-		int selected = 0;
-		for (std::size_t i = 1; i < ids.size(); ++i) {
-			if (ids[i] == saved) selected = static_cast<int>(i);
-		}
-		SetOptions(std::move(options), selected);
+		const auto [savedVideo, savedMusic] = LoadStatePicks();
+		const auto find = [&](const std::string& a_id) {
+			for (std::size_t i = 1; i < ids.size(); ++i) {
+				if (ids[i] == a_id) return static_cast<int>(i);
+			}
+			return 0;
+		};
+		// A state from before separate music names one pack for both, as the single choice did.
+		const int saved = find(savedVideo);
+		const int background = saved > 0 && !options[saved].video.empty() ? saved : 0;
+		int music = savedMusic ? find(*savedMusic) : saved;
+		if (music > 0 && options[music].music.empty()) music = 0;
 		std::scoped_lock lock(s_mutex);
+		s_options = std::move(options);
 		s_optionIds = std::move(ids);
-		logger::info("mainmenu: {} menu options (video, theme or both), selected {} ('{}')", s_options.size(), s_selected, saved);
+		s_bgPick = background;
+		s_musicPick = music;
+		ApplyPicks();
+		logger::info("mainmenu: {} menu packs ({} themes, {} backgrounds, {} music); background '{}', music '{}'", s_options.size() - 1, ListEntries(List::Themes).size() - 1, ListEntries(List::Backgrounds).size() - 1, ListEntries(List::Music).size() - 1, s_options[s_bgPick].name, s_options[s_musicPick].name);
 	}
 
 	std::string RedirectMovie(std::string_view a_url)
@@ -650,12 +824,14 @@ namespace ADT::MainMenu
 		const auto& category = candidates.front().second->category;
 		const Packs::Pack* chosen = nullptr;
 		if (category == "mainmenu") {
-			// The main menu's movie comes from the pack picked in the MENU ART selector.
+			// Replaces the main menu's movie only with the copy of the pack picked in the MENU ART selector.
 			std::scoped_lock lock(s_mutex);
-			const auto id = s_selected >= 0 && s_selected < static_cast<int>(s_optionIds.size()) ? s_optionIds[s_selected] : std::string();
+			const auto id = OptionId(s_bgPick);
 			for (const auto& [pack, movie] : candidates) {
-				if (id.empty() ? pack->vanilla : pack->id == id) chosen = pack;
+				if (!pack->vanilla && pack->id == id) return movie->file;
 			}
+			// Leaves the file the mod manager resolved when the pick ships no main menu movie.
+			return {};
 		} else {
 			// A list page's pick, or the share's pick for this file under the current layout.
 			auto file = Settings::Lower(a_url);
@@ -708,40 +884,39 @@ namespace ADT::MainMenu
 	int Selected()
 	{
 		std::scoped_lock lock(s_mutex);
-		return s_selected;
+		const auto entries = ListEntries(List::Backgrounds);
+		const auto it = std::find(entries.begin(), entries.end(), s_bgPick);
+		return it == entries.end() ? 0 : static_cast<int>(it - entries.begin());
 	}
 
 	int OptionCount()
 	{
 		std::scoped_lock lock(s_mutex);
-		return static_cast<int>(s_options.size());
+		return static_cast<int>(ListEntries(List::Backgrounds).size());
 	}
 
 	void Select(int a_index)
 	{
+		int background = -1, music = 0;
 		{
 			std::scoped_lock lock(s_mutex);
-			if (a_index < 0 || a_index >= static_cast<int>(s_options.size())) return;
-			s_selected = a_index;
-			s_menuVideo = s_options[a_index].video;
-			SetTheme(s_options[a_index].music);
-			logger::info("mainmenu: selected {} -> video '{}', theme '{}'", s_options[a_index].name, s_menuVideo, s_options[a_index].music);
-			SaveState();
+			const auto entries = ListEntries(List::Backgrounds);
+			if (a_index < 0 || a_index >= static_cast<int>(entries.size())) return;
+			background = entries[a_index];
+			music = s_musicPick;
 		}
-		// The main menu opens its video when it is created. Hiding and showing the menu re-creates it with a dead list, so the
-		// engine's own return-to-main-menu sequence is requested instead, the path the game takes when leaving a save.
-		// That sequence ends a running game, so from inside one the choice is only stored for the next menu.
-		auto* ui = RE::UI::GetSingleton();
-		if (!ui || !ui->GetMenuOpen("MainMenu")) {
-			logger::info("mainmenu: choice stored; the menu picks it up when it is next created");
-			return;
-		}
-		F4SE::GetTaskInterface()->AddTask([] {
-			if (auto* game = RE::Main::GetSingleton(); game) {
-				game->resetGame = true;
-				logger::info("mainmenu: game reset requested for the video switch");
-			}
-		});
+		Pick(background, music);
+	}
+
+	bool AnyPicked()
+	{
+		std::scoped_lock lock(s_mutex);
+		return s_bgPick != 0 || s_musicPick != 0;
+	}
+
+	void ResetPicks()
+	{
+		if (AnyPicked()) Pick(0, 0);
 	}
 
 }

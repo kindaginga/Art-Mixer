@@ -26,7 +26,8 @@ public sealed record ConversionResult(int Packs, IReadOnlyList<string> SharedWar
 /// <summary>Runs one conversion: scans the installed mods, writes the pack mod folder, the MCM pages and the report.</summary>
 public static class Conversion
 {
-    public const int SlotsPerCategory = 10;
+    // Slots one page or list may have: the Papyrus array limit, as the plugin's kMaxSlots.
+    public const int SlotsPerCategory = 128;
     public const string OutputModName = "Art Distribution Tool Packs";
 
     public static string CatalogPath => Path.Combine(AppContext.BaseDirectory, "vanilla-slots.json");

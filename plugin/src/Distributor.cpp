@@ -135,18 +135,15 @@ namespace ADT::Distributor
 		// The share a pack's one control gives its objects: the slider or switch on the pack's main page; 0 for a pack past its page's slots.
 		[[nodiscard]] int ShareOf(const Packs::Pack& a_pack, const Settings::Values& a_values)
 		{
-			// A pack's slot index in a page's or kind's list, or the slot count for a pack the list leaves out.
-			const auto slotOf = [&](const std::string& a_list) {
-				const auto& slots = Packs::SlotsFor(a_list);
-				const auto found = std::find(slots.begin(), slots.end(), &a_pack);
-				return found == slots.end() ? static_cast<std::size_t>(Settings::kSlotsPerCategory) : static_cast<std::size_t>(found - slots.begin());
-			};
 			const auto& main = a_pack.page;
 			if (main.empty()) return 0;
-			const auto j = slotOf(main);
-			if (j >= static_cast<std::size_t>(Settings::kSlotsPerCategory)) return 0;
+			// The pack's slot index in its main page's list; a pack the list leaves out has no share.
+			const auto& slots = Packs::SlotsFor(main);
+			const auto found = std::find(slots.begin(), slots.end(), &a_pack);
+			if (found == slots.end()) return 0;
+			const auto j = static_cast<std::size_t>(found - slots.begin());
 			const auto* page = SettingsOf(a_values, main);
-			return page ? page->percent[j] : 0;
+			return page && j < page->percent.size() ? page->percent[j] : 0;
 		}
 
 		// The pack a roll lands on among the packs that have a version of the object (every pack without a test), each by its share;
@@ -160,8 +157,7 @@ namespace ADT::Distributor
 			std::vector<std::pair<const Packs::Pack*, int>> candidates;
 			int total = 0;
 			for (std::size_t i = 0; i < packs.size(); ++i) {
-				if (listed && i >= static_cast<std::size_t>(Settings::kSlotsPerCategory)) break;
-				const int share = listed ? (settings ? settings->percent[i] : 0) : ShareOf(*packs[i], a_values);
+				const int share = listed ? (settings && i < settings->percent.size() ? settings->percent[i] : 0) : ShareOf(*packs[i], a_values);
 				if (share <= 0 || (a_covers && !a_covers(*packs[i]))) continue;
 				candidates.emplace_back(packs[i], share);
 				total += share;

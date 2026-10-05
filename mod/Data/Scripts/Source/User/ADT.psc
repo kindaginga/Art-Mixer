@@ -46,6 +46,9 @@ string[] Function GetCategories() global native
 ; Number of packs a category's page or list shows.
 int Function GetSlotCount(string asCategory) global native
 
+; Number of slots a category has values for in effect, shown or left over from an earlier pack set.
+int Function GetStoredSlotCount(string asCategory) global native
+
 ; MCM ids of menu values that differ from the settings in effect, or from the defaults, at most 128, in the order of GetMenuFixValues.
 string[] Function GetMenuFixIds(bool abDefaults) global native
 

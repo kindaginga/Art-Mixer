@@ -129,8 +129,8 @@ public static class Program
     private static void Usage()
     {
         Console.WriteLine(Title + ". Start it without arguments for the window, or:");
-        Console.WriteLine("  ArtDistributionToolConverter --game \"<Fallout 4 folder>\" --out \"<mods folder>\\Art Distribution Tool Packs\" <installed mod folder> ...");
-        Console.WriteLine("  ArtDistributionToolConverter --list-installed [--mo2-instance <name> | <MO2 instance folder or Vortex data folder>]");
+        Console.WriteLine("  \"Art Distribution Tool.exe\" --game \"<Fallout 4 folder>\" --out \"<mods folder>\\Art Distribution Tool Packs\" <installed mod folder> ...");
+        Console.WriteLine("  \"Art Distribution Tool.exe\" --list-installed [--mo2-instance <name> | <MO2 instance folder or Vortex data folder>]");
         Console.WriteLine("                     list the installed mods there that hold art, without converting anything");
         Console.WriteLine("  --zip <file>       also zip the output (for Vortex's downloads folder)");
     }

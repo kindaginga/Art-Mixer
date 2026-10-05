@@ -24,7 +24,7 @@ INSTALL (both managers)
 1. Install the requirements above.
 2. Install "Art Distribution Tool" with your mod manager like any other mod (it is a FOMOD, click through it).
    Make sure ArtDistributionTool.esl is enabled in your plugin list. The converter is inside the mod at
-   Tools\ArtDistributionTool\ArtDistributionToolConverter.exe.
+   Tools\ArtDistributionTool\Art Distribution Tool.exe.
 3. Install the art mods you want to use with your mod manager, as you would without Art Distribution Tool, and
    pick whatever their installers offer. Art mods are replacers: they change the game's own paintings,
    posters, signs, magazines, props and set dressing, Pip-Boy or main menu. Standalone art mods, which add
@@ -50,10 +50,10 @@ INSTALL (both managers)
 
 CONVERT
 -------
-Start ArtDistributionToolConverter.exe. The quickest way is to add it as a tool in your manager once:
+Start Art Distribution Tool.exe. The quickest way is to add it as a tool in your manager once:
   Mod Organizer 2: the executables list (the gears icon), Add, browse to
-    <your instance>\mods\Art Distribution Tool\Tools\ArtDistributionTool\ArtDistributionToolConverter.exe
-  Vortex: Dashboard, Add tool, browse to Data\Tools\ArtDistributionTool\ArtDistributionToolConverter.exe in your
+    <your instance>\mods\Art Distribution Tool\Tools\ArtDistributionTool\Art Distribution Tool.exe
+  Vortex: Dashboard, Add tool, browse to Data\Tools\ArtDistributionTool\Art Distribution Tool.exe in your
     game folder after deployment.
 You can also double-click the exe directly.
 
@@ -82,7 +82,7 @@ add its covers to the loading screens the same way, set on the "Loading screens"
 ever goes on a loading screen. If you use ALR (Automated Loading Screen Replacer), Art Distribution Tool leaves the
 loading screens to it.
 The log in the window and ADT\convert-report.txt in the output list what was found in each mod.
-Each category page has 10 pack slots; the report names any pack that got no slider.
+Each page lists every pack whose slider or switch sits there, up to 128 per page.
 A mod whose items are all in another mod you convert, file for file (a cut-down copy of the same mod),
 is left out; a warning names the mod that already has them.
 A patch joins its mod's pack. When two mods you convert come from the same Nexus page and replace at least
@@ -95,9 +95,12 @@ What the converter recognizes. Only art counts: files in the game's set dressing
 art folders, signs, quest pictures, the Pip-Boy, and the main menu. Everything else a mod replaces (bodies,
 faces, clothes, armor, weapons, interface, landscape, sky, sounds) stays with that mod; the log lists what
 was left, so keep such a mod installed for it. "Find installed art mods" lists only mods with art.
-  - Main menu replacers: Video\MainMenuLoop.bk2 (still or animated). Each such mod becomes a choice of the
-    "MENU ART" entry in the main menu, between SETTINGS and CREW; each press moves to the next choice.
-    A pick restarts the main menu with that video; the choice is kept in ADT\state.json.
+  - Main menu replacers: Video\MainMenuLoop.bk2 (still or animated) and the main menu theme
+    (Music\Special\MUS_MainTheme). The "MENU ART" entry in the main menu, between SETTINGS and CREW, opens
+    three lists: THEMES (mods with both a video and music), BACKGROUNDS (every video, each theme's included)
+    and MUSIC (every theme's music and the music-only mods). A theme sets both; a background or music pick
+    changes only its own half. A long list shows in pages, with MORE for the next page. A pick restarts the
+    main menu; the picks are kept in ADT\state.json.
   - Pip-Boy replacers: the screen background (textures\AnimObjects\Pipboy\PipBoyScreen_d.dds) and the
     device skin (PipBoy01_d, PipBoy02_d, PipBoyLabels01_d, PipBoyInterior01_d, PipBoyGlow01_d) get their own
     "Pip-Boy" page: one list for the screen background and one for the skin, Vanilla or one pack each.
@@ -109,15 +112,15 @@ was left, so keep such a mod installed for it. "Find installed art mods" lists o
   - Textures the game loads by their name rather than through a material: the Pip-Boy screen effects
     (these follow the Pip-Boy screen list), and texture sets of art objects. The Pip-Boy world map, perk
     chart and Pip-Boy interface files are not converted; they stay with their mod.
-  - The main menu theme (Music\Special\MUS_MainTheme), which follows the main menu list.
-  - Main menu interface files over the game's own.
+  - Main menu interface files over the game's own, from a mod that also ships a main menu video or music;
+    they show while that mod's background is picked.
   - A mod plugin's changes to the game's own material swaps and texture sets.
   - Materials (.bgsm) at vanilla art paths that point at new textures.
   - An adt-pack.json in the mod (optional) listing pictures and categories explicitly.
 Each replacement shows only on the objects its mod replaces, just as the mod does on its own. Left alone:
 a mod's new objects and their pictures (its own plugin shows them) and textures nothing in the game uses.
 
-Command line (for scripts): ArtDistributionToolConverter --game "<Fallout 4 folder>" --out "<mods folder>\Art Distribution Tool Packs" <installed mod folders...>
+Command line (for scripts): "Art Distribution Tool.exe" --game "<Fallout 4 folder>" --out "<mods folder>\Art Distribution Tool Packs" <installed mod folders...>
 
 
 MENU
@@ -150,7 +153,7 @@ MENU
   New layout on every load   off by default; when on, every save you load gets a new arrangement.
   Reset all settings   back to defaults: all art vanilla (every pack slider at 0), Pip-Boy screen and skin
                        on Vanilla, new layout on every load off, layout seed 1,
-                       vanilla main menu video.
+                       vanilla main menu background and music.
   When the converter is run again and the packs it writes changed (a mod added or removed, for example),
   every setting goes back to its default by itself, as with Reset all settings, and a message says "the
   art packs changed, settings were reset". Converting the same mods again keeps your settings.
@@ -168,4 +171,3 @@ NOTES
     Mod Organizer 2 it restores them from the archive the mod was installed from and lists what it restored.
     Where that archive is gone, or under Vortex, reinstall Art Distribution Tool with your mod manager.
   - Log file: Documents\My Games\Fallout4\F4SE\ArtDistributionTool.log.
-

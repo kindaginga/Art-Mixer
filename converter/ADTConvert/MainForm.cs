@@ -169,7 +169,7 @@ public sealed class MainForm : Form
     }
 
     /// <summary>Looks through the chosen manager's installed mods off the window's thread and lists the art mods, the ones
-    /// the Mod Organizer 2 profile enables ticked.</summary>
+    /// the Mod Organizer 2 profile enables and the ones the current packs were converted from ticked.</summary>
     private async Task FindInstalledAsync()
     {
         if (_busy) return;
@@ -197,16 +197,19 @@ public sealed class MainForm : Form
             _status.Text = "Finding installed art mods failed: " + failure;
             return;
         }
+        // Folders of the mods the current packs were converted from.
+        var converted = new HashSet<string>(Conversion.ReadConverted(_folder.Text)?.Mods.Where(m => m.Folder.Length > 0).Select(m => Path.GetFullPath(m.Folder)) ?? [], StringComparer.OrdinalIgnoreCase);
+        bool Ticked(InstalledMod mod) => mod.Enabled == true || converted.Contains(Path.GetFullPath(mod.Location));
         _found.BeginUpdate();
         try
         {
-            foreach (var mod in scan.Mods) _found.Items.Add(new ListViewItem([mod.Name, mod.Status, mod.Summary]) { Tag = mod, ToolTipText = mod.Location, Checked = mod.Enabled == true });
+            foreach (var mod in scan.Mods) _found.Items.Add(new ListViewItem([mod.Name, mod.Status, mod.Summary]) { Tag = mod, ToolTipText = mod.Location, Checked = Ticked(mod) });
         }
         finally
         {
             _found.EndUpdate();
         }
-        var ticked = scan.Mods.Count(m => m.Enabled == true);
+        var ticked = scan.Mods.Count(Ticked);
         var searched = Report.Count(scan.ModFolders, "installed mod", "installed mods");
         var warnings = report.Warnings > 0 ? $" {Report.Count(report.Warnings, "warning", "warnings")} in the log below." : "";
         _status.Text = (scan.Mods.Count == 0

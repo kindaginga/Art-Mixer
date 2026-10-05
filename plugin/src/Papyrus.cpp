@@ -68,12 +68,16 @@ namespace ADT::Papyrus
 
 		void SetMenuVideo(std::monostate, std::int32_t a_index)
 		{
-			if (a_index != MainMenu::Selected()) MainMenu::Select(a_index);
+			if (a_index == 0) {
+				MainMenu::ResetPicks();
+			} else if (a_index != MainMenu::Selected()) {
+				MainMenu::Select(a_index);
+			}
 		}
 
 		std::int32_t GetMenuVideo(std::monostate)
 		{
-			return MainMenu::Selected();
+			return MainMenu::AnyPicked() ? std::max(1, MainMenu::Selected()) : 0;
 		}
 
 		RE::BSFixedString GetPackSignature(std::monostate)
@@ -84,6 +88,11 @@ namespace ADT::Papyrus
 		std::int32_t GetSlotCount(std::monostate, RE::BSFixedString a_category)
 		{
 			return static_cast<std::int32_t>(Packs::SlotsFor(a_category.c_str() ? a_category.c_str() : "").size());
+		}
+
+		std::int32_t GetStoredSlotCount(std::monostate, RE::BSFixedString a_category)
+		{
+			return Settings::StoredSlots(a_category.c_str() ? a_category.c_str() : "");
 		}
 
 		std::vector<std::string> GetCategories(std::monostate)
@@ -102,11 +111,11 @@ namespace ADT::Papyrus
 			};
 			for (const auto& section : Packs::Sections()) {
 				const auto category = Settings::NormalizeCategory(section);
-				const int shown = static_cast<int>(std::min<std::size_t>(Packs::SlotsFor(category).size(), Settings::kSlotsPerCategory));
+				const int shown = static_cast<int>(Packs::SlotsFor(category).size());
 				const auto applied = [&](int a_slot) { return a_defaults ? 0 : Settings::Percent(category, a_slot); };
 				if (category == "pipboyscreen" || category == "pipboyskin") {
 					int pick = 0;
-					for (int slot = 1; slot <= Settings::kSlotsPerCategory && pick == 0; ++slot) {
+					for (int slot = 1; slot <= shown && pick == 0; ++slot) {
 						if (applied(slot) == 100) pick = slot;
 					}
 					check("iPick:" + section, pick);
@@ -114,10 +123,10 @@ namespace ADT::Papyrus
 				}
 				if (category == "other") {
 					// Each Other replacers pack's switch is on when its share is the whole.
-					for (int slot = 1; slot <= shown; ++slot) check(fmt::format("bOn{}:{}", slot, section), applied(slot) == 100 ? 1 : 0);
+					for (int slot = 1; slot <= shown; ++slot) check(Settings::MenuKey(section, slot), applied(slot) == 100 ? 1 : 0);
 					continue;
 				}
-				for (int slot = 1; slot <= shown; ++slot) check(Settings::MenuKey("iSlot", slot, section), applied(slot));
+				for (int slot = 1; slot <= shown; ++slot) check(Settings::MenuKey(section, slot), applied(slot));
 			}
 			return fixes;
 		}
@@ -173,6 +182,7 @@ namespace ADT::Papyrus
 		a_vm->BindNativeMethod(kScript, "GetMenuVideo"sv, GetMenuVideo, true);
 		a_vm->BindNativeMethod(kScript, "GetPackSignature"sv, GetPackSignature, true);
 		a_vm->BindNativeMethod(kScript, "GetSlotCount"sv, GetSlotCount, true);
+		a_vm->BindNativeMethod(kScript, "GetStoredSlotCount"sv, GetStoredSlotCount, true);
 		a_vm->BindNativeMethod(kScript, "GetCategories"sv, GetCategories, true);
 		a_vm->BindNativeMethod(kScript, "GetMenuFixIds"sv, GetMenuFixIds, true);
 		a_vm->BindNativeMethod(kScript, "GetMenuFixValues"sv, GetMenuFixValues, true);
