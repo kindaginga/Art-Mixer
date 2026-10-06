@@ -913,7 +913,7 @@ public sealed class Writer
             version = 1,
             generated = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
             signature = Signature(packs, slotsPerCategory),
-            mods = mods.Select(m => new { name = m.Name, folder = m.Folder, contains = m.Contains }),
+            mods = mods.Select(m => new { name = m.Name, folder = m.Folder, contains = m.Contains, group = m.Group }),
             categories,
             gameTextures = _gameTextures,
             gameModels = _gameModels,

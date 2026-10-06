@@ -211,13 +211,22 @@ namespace ADT::Distributor
 		}
 
 		// True when some pack names this object so; such a name on a reference is one this plugin set.
-		[[nodiscard]] bool IsPackName(const Catalog::Slot& a_slot, std::string_view a_name)
+		// Returns a_name in the place of the game's name a_game inside the object's own name a_own, keeping another mod's tags around it; a_name alone when a_own does not hold a_game.
+		[[nodiscard]] std::string Tagged(std::string_view a_own, std::string_view a_game, std::string_view a_name)
+		{
+			const auto at = a_game.empty() ? std::string_view::npos : a_own.find(a_game);
+			if (at == std::string_view::npos) return std::string(a_name);
+			return std::string(a_own.substr(0, at)).append(a_name).append(a_own.substr(at + a_game.size()));
+		}
+
+		[[nodiscard]] bool IsPackName(const Catalog::Slot& a_slot, std::string_view a_name, std::string_view a_own = {}, std::string_view a_game = {})
 		{
 			for (const auto& pack : Packs::All()) {
 				const auto it = pack.images.find(a_slot.category);
 				if (it == pack.images.end()) continue;
 				for (const auto& image : it->second) {
-					if (image.slot == a_slot.material && image.name == a_name) return true;
+					if (image.slot != a_slot.material || image.name.empty()) continue;
+					if (image.name == a_name || Tagged(a_own, a_game, image.name) == a_name) return true;
 				}
 			}
 			return false;
@@ -586,11 +595,12 @@ namespace ADT::Distributor
 		if (!ref || !slot || !base || base->GetFormID() != a_baseFormID) return;
 		const auto choice = ChooseObject(Inventory::IdentityOf(a_formID, a_baseFormID, a_inWorld), slot, nullptr);
 		const std::string own{ RE::TESFullName::GetFullName(*base) };
-		// The rolled pack's name for the object, else the game's own name while the object shows a converted mod's name.
-		auto wanted = choice.object && !choice.object->name.empty() ? choice.object->name : choice.vanillaObject && IsPackName(*slot, own) ? choice.vanillaObject->name : std::string();
+		const std::string game = choice.vanillaObject ? choice.vanillaObject->name : std::string();
+		// The rolled pack's name for the object inside the own name's tags, else the game's own name while the object shows a converted mod's name.
+		auto wanted = choice.object && !choice.object->name.empty() ? Tagged(own, game, choice.object->name) : choice.vanillaObject && IsPackName(*slot, own) ? game : std::string();
 		// A name equal to the object's own name is no change.
 		if (wanted == own) wanted.clear();
-		const bool changed = Engine::SetReferenceName(ref, wanted, [slot](std::string_view a_name) { return IsPackName(*slot, a_name); });
+		const bool changed = Engine::SetReferenceName(ref, wanted, [slot, &own, &game](std::string_view a_name) { return IsPackName(*slot, a_name, own, game); });
 		if (changed && s_nameLogs.fetch_add(1) < 20) logger::info("reference {:08X} (base {:08X}): name {}", a_formID, a_baseFormID, wanted.empty() ? "back to the object's own" : "'" + wanted + "'");
 	}
 

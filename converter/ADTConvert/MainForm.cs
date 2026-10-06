@@ -145,6 +145,7 @@ public sealed class MainForm : Form
             : Path.Combine(Path.GetTempPath(), "ADTConvert-Vortex", Conversion.OutputModName);
         _folder.ReadOnly = d.Kind == "vortex";
         _found.Items.Clear();
+        _found.Groups.Clear();
         _find.Enabled = !_busy;
         _status.Text = "Press Find installed art mods, untick what you do not want, then press Convert.";
         ShowConverted();
@@ -157,11 +158,8 @@ public sealed class MainForm : Form
         _found.BeginUpdate();
         try
         {
-            foreach (var mod in converted.Mods)
-            {
-                var row = new InstalledMod { Name = mod.Name, Location = mod.Folder, Summary = mod.Contains, StatusText = "converted" };
-                _found.Items.Add(new ListViewItem([row.Name, row.Status, row.Summary]) { Tag = row, ToolTipText = row.Location, Checked = Directory.Exists(row.Location) });
-            }
+            var rows = converted.Mods.Select(mod => new InstalledMod { Name = mod.Name, Location = mod.Folder, Summary = mod.Contains, Group = mod.Group, StatusText = "converted" }).ToList();
+            FillGroups(rows, row => Directory.Exists(row.Location));
         }
         finally
         {
@@ -170,8 +168,30 @@ public sealed class MainForm : Form
         _status.Text = $"{Report.Count(converted.Mods.Count, "mod is", "mods are")} already converted ({converted.Generated}). Press Find installed art mods to pick again, or Convert to rebuild the same packs.";
     }
 
+    /// <summary>Lists the mods under one collapsible group per kind of art, in list order; the props and set dressing and mostly not art groups start collapsed.</summary>
+    private void FillGroups(IReadOnlyList<InstalledMod> mods, Func<InstalledMod, bool> ticked)
+    {
+        _found.Groups.Clear();
+        var names = InstalledMods.Groups.Prepend("Converted").Where(name => mods.Any(mod => GroupName(mod) == name));
+        foreach (var name in names)
+        {
+            var count = mods.Count(mod => GroupName(mod) == name);
+            _found.Groups.Add(new ListViewGroup(name, $"{name} ({count})")
+            {
+                CollapsedState = name is InstalledMods.PropsGroup or InstalledMods.NotArtGroup ? ListViewGroupCollapsedState.Collapsed : ListViewGroupCollapsedState.Expanded,
+            });
+        }
+        foreach (var mod in mods)
+        {
+            _found.Items.Add(new ListViewItem([mod.Name, mod.Status, mod.Summary]) { Tag = mod, ToolTipText = mod.Location, Checked = ticked(mod), Group = _found.Groups[GroupName(mod)] });
+        }
+    }
+
+    // The group a mod is listed under; "Converted" for a mod the packs recorded without a group.
+    private static string GroupName(InstalledMod mod) => mod.Group.Length > 0 ? mod.Group : "Converted";
+
     /// <summary>Looks through the chosen manager's installed mods off the window's thread and lists the art mods, the ones
-    /// the Mod Organizer 2 profile enables and the ones the current packs were converted from ticked.</summary>
+    /// the Mod Organizer 2 profile enables and the ones the current packs were converted from ticked, except mods that are mostly not art.</summary>
     private async Task FindInstalledAsync()
     {
         if (_busy) return;
@@ -181,6 +201,7 @@ public sealed class MainForm : Form
         _convert.Enabled = false;
         _destination.Enabled = false;
         _found.Items.Clear();
+        _found.Groups.Clear();
         _status.Text = "Looking for installed art mods.";
         var report = new Report { Sink = line => BeginInvoke(() => { _log.AppendText(line + Environment.NewLine); }) };
         InstalledScan? scan = null;
@@ -201,11 +222,11 @@ public sealed class MainForm : Form
         }
         // Folders of the mods the current packs were converted from.
         var converted = new HashSet<string>(Conversion.ReadConverted(_folder.Text)?.Mods.Where(m => m.Folder.Length > 0).Select(m => Path.GetFullPath(m.Folder)) ?? [], StringComparer.OrdinalIgnoreCase);
-        bool Ticked(InstalledMod mod) => mod.Enabled == true || converted.Contains(Path.GetFullPath(mod.Location));
+        bool Ticked(InstalledMod mod) => mod.Group != InstalledMods.NotArtGroup && (mod.Enabled == true || converted.Contains(Path.GetFullPath(mod.Location)));
         _found.BeginUpdate();
         try
         {
-            foreach (var mod in scan.Mods) _found.Items.Add(new ListViewItem([mod.Name, mod.Status, mod.Summary]) { Tag = mod, ToolTipText = mod.Location, Checked = Ticked(mod) });
+            FillGroups(scan.Mods, Ticked);
         }
         finally
         {
@@ -234,6 +255,7 @@ public sealed class MainForm : Form
             Inputs = inputs,
             ZipTo = d.Kind == "vortex" ? Path.Combine(d.DownloadsFolder!, Conversion.OutputModName + ".zip") : null,
             Summaries = _found.CheckedItems.Cast<ListViewItem>().Select(item => item.Tag).OfType<InstalledMod>().GroupBy(mod => mod.Location, StringComparer.OrdinalIgnoreCase).ToDictionary(group => group.Key, group => group.First().Summary, StringComparer.OrdinalIgnoreCase),
+            Groups = _found.CheckedItems.Cast<ListViewItem>().Select(item => item.Tag).OfType<InstalledMod>().GroupBy(mod => mod.Location, StringComparer.OrdinalIgnoreCase).ToDictionary(group => group.Key, group => group.First().Group, StringComparer.OrdinalIgnoreCase),
             EnabledNotConverted = _found.Items.Cast<ListViewItem>().Where(item => !item.Checked).Select(item => item.Tag).OfType<InstalledMod>().Where(mod => mod.Enabled == true).Select(mod => mod.Location).ToList(),
         };
         _busy = true;

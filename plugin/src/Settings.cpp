@@ -109,6 +109,10 @@ namespace ADT::Settings
 		auto path = Lower(a_path);
 		std::replace(path.begin(), path.end(), '/', '\\');
 		while (!path.empty() && path.front() == '\\') path.erase(0, 1);
+		// Cuts a model's absolute build path ("c:\\projects\\fallout4\\build\\pc\\data\\materials\\...") at its Data folder.
+		if (path.size() > 2 && path[1] == ':') {
+			if (const auto data = path.find("\\data\\"); data != std::string::npos) path.erase(0, data + 6);
+		}
 		if (path.starts_with("data\\")) path.erase(0, 5);
 		if (path.size() > a_folder.size() && path.starts_with(a_folder) && path[a_folder.size()] == '\\') path.erase(0, a_folder.size() + 1);
 		return path;

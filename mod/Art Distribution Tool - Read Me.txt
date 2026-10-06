@@ -1,9 +1,9 @@
 ART DISTRIBUTION TOOL
 =====================
 
-Install several art mods at once and choose, in the MCM, how much of each one you see. Set a painting pack
-to 40% and a sign pack to 30%: 40% of the paintings and 30% of the signs those mods replace show their art,
-and the rest stay vanilla. Every frame gets its own pick.
+Install several art mods at once and choose, in the MCM, how much of each one you see. Install three
+painting mods and set them to 50, 30 and 20: half the paintings show the first mod's art, 30% the second's
+and 20% the third's. Set them lower and some paintings stay vanilla.
 
 Covers paintings, posters, signs, magazines, quest pictures, props and set dressing, the Pip-Boy screen and
 skin, the Pip-Boy world map, magazine covers on loading screens, and the main menu background and music.
@@ -43,7 +43,10 @@ The converter is Tools\ArtDistributionTool\Art Distribution Tool.exe inside the 
   Vortex: Dashboard > Add tool > browse to Data\Tools\ArtDistributionTool\Art Distribution Tool.exe
 
 It finds your Mod Organizer 2 instances and Vortex by itself. "Find installed art mods" lists the mods that
-hold art; enabled ones are ticked. Each ticked mod becomes one pack named after the mod (rename the mod in
+hold art, grouped by the kind of art each holds most of; enabled ones are ticked. The "Props and set
+dressing" group starts collapsed: open it to see which of those mods will be converted. Mods in the
+"Mostly not art" group (graphics overhauls, item sorters and other mods that mostly change things other
+than art) start collapsed and unticked: tick one to convert its art. Each ticked mod becomes one pack named after the mod (rename the mod in
 your manager to rename the pack). Every conversion rebuilds all packs from the ticked mods. The log and
 ADT\convert-report.txt in the output say what was taken from each mod and what was left to it.
 

@@ -51,6 +51,8 @@ public static class Paths
     public static string Normalize(string path, string root)
     {
         var p = path.Replace('/', '\\').ToLowerInvariant().TrimStart('\\');
+        // Cuts a model's absolute build path ("c:\\projects\\fallout4\\build\\pc\\data\\materials\\...") at its Data folder.
+        if (p.Length > 2 && p[1] == ':' && p.IndexOf("\\data\\", StringComparison.Ordinal) is var data and >= 0) p = p[(data + 6)..];
         if (p.StartsWith("data\\")) p = p[5..];
         if (p.StartsWith(root + "\\")) p = p[(root.Length + 1)..];
         return p;

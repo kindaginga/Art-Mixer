@@ -14,10 +14,12 @@ public sealed class ConvertOptions
     public IReadOnlyList<string> EnabledNotConverted { get; init; } = [];
     /// <summary>What the window lists as each input's contents, by folder; recorded with the converted mods.</summary>
     public IReadOnlyDictionary<string, string> Summaries { get; init; } = new Dictionary<string, string>();
+    /// <summary>The list group the window shows each input in, by folder; recorded with the converted mods.</summary>
+    public IReadOnlyDictionary<string, string> Groups { get; init; } = new Dictionary<string, string>();
 }
 
 /// <summary>A mod the packs were converted from, as packs.json records it: its name, its folder and its contents line.</summary>
-public sealed record ConvertedMod(string Name, string Folder, string Contains);
+public sealed record ConvertedMod(string Name, string Folder, string Contains, string Group = "");
 
 /// <summary>What a conversion wrote: the number of packs, one warning for each enabled mod that is not converted and shares objects with the converted mods,
 /// and the message about the mod's own files when some were missing or changed.</summary>
@@ -77,7 +79,7 @@ public static class Conversion
             if (outputFolder.Length == 0 || !File.Exists(path)) return null;
             using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(path));
             if (!document.RootElement.TryGetProperty("mods", out var rows)) return null;
-            var mods = rows.EnumerateArray().Select(row => new ConvertedMod(row.GetProperty("name").GetString() ?? "", row.GetProperty("folder").GetString() ?? "", row.GetProperty("contains").GetString() ?? "")).ToList();
+            var mods = rows.EnumerateArray().Select(row => new ConvertedMod(row.GetProperty("name").GetString() ?? "", row.GetProperty("folder").GetString() ?? "", row.GetProperty("contains").GetString() ?? "", row.TryGetProperty("group", out var group) ? group.GetString() ?? "" : "")).ToList();
             var generated = document.RootElement.TryGetProperty("generated", out var stamp) ? stamp.GetString() ?? "" : "";
             return mods.Count > 0 ? (generated, mods) : null;
         }
@@ -211,7 +213,7 @@ public static class Conversion
                 continue;
             }
             found.Add((source, images));
-            mods.Add(new ConvertedMod(source.Name, input, options.Summaries.GetValueOrDefault(input) ?? Report.Count(images.Count, "item", "items")));
+            mods.Add(new ConvertedMod(source.Name, input, options.Summaries.GetValueOrDefault(input) ?? Report.Count(images.Count, "item", "items"), options.Groups.GetValueOrDefault(input) ?? ""));
         }
         var sharedWarnings = WarnShared(options, found, catalog, gameFiles, report);
         foreach (var (source, images) in WithPatches(WithoutDuplicates(found, keys, gameFiles, report), gameFiles, report))

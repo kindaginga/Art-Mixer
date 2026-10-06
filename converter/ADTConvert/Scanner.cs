@@ -90,12 +90,21 @@ public static class Scanner
     // The game folders whose files are art: the set dressing, props and loading screen art the mod was made for.
     private static readonly string[] ArtFolders = ["setdressing\\", "props\\", "loadscreenart\\"];
 
+    // Folders and file name starts in the art folders that are not art: fences, light fixtures and candles, mirrors, Protectron pods, suitcases, sidewalk clutter (bollards) and plastic bins.
+    private static readonly string[] NotArtPaths =
+    [
+        "setdressing\\fencesgrates\\", "setdressing\\junkwalls\\", "setdressing\\lightfixtures\\", "setdressing\\waxcandle", "setdressing\\railroad\\waxcandle",
+        "setdressing\\playerhouse\\playerhouse_bathroommirror", "setdressing\\protectronpod\\", "setdressing\\suitcase\\", "setdressing\\sidewalkclutter\\",
+        "props\\binplastic", "props\\bintoys",
+    ];
+
     /// <summary>Whether a game file (relative to Textures, Materials or Meshes, a location's folder such as dlc03 allowed in
     /// front) is art Art Distribution Tool handles: a file in an art folder, or a Pip-Boy, sign or quest picture file by its name.
     /// Bodies, clothes, armor, weapons, interface, landscape, sky and everything else stay with the mod that ships them.</summary>
     public static bool IsArtPath(string path)
     {
         var lower = System.Text.RegularExpressions.Regex.Replace(path.ToLowerInvariant().Replace('/', '\\').TrimStart('\\'), @"^dlc\d+\\", "");
+        if (NotArtPaths.Any(start => lower.StartsWith(start, StringComparison.Ordinal))) return false;
         if (ArtFolders.Any(folder => lower.StartsWith(folder, StringComparison.Ordinal))) return true;
         return ClassifyVanilla(lower, "") is "pipboyscreen" or "pipboyskin" or "pipboymap" or "quest" or "signage" || ByNameCategory(lower) == "pipboyscreen";
     }
