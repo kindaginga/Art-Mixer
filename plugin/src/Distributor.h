@@ -35,6 +35,8 @@ namespace ADT::Distributor
 	[[nodiscard]] std::string ChooseTexture(std::string_view a_relative);
 	// Widens the bounds of every object a pack version needs other bounds for to the box enclosing all versions (game data ready).
 	void ApplyBounds();
+	// Gives the Commonwealth world map the cells the chosen world map was drawn for (the game's own for Vanilla or a pack without its own).
+	void ApplyWorldMap();
 	// Gives a reference the name of the pack version it shows, or takes a pack name off again (game thread).
 	void ApplyName(std::uint32_t a_formID, std::uint32_t a_baseFormID, bool a_inWorld);
 	// One material swap entry on a reference: the material it shows and the swap form ("file:local id") it comes from.

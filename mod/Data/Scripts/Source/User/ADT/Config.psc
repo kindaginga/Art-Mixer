@@ -125,9 +125,9 @@ Function ResetAll()
 	Debug.Notification("Art Distribution Tool: defaults set, not yet applied.")
 EndFunction
 
-; The Pip-Boy page holds one list per category instead of sliders: iPick is 0 for Vanilla or the slot number of the chosen pack.
+; The Pip-Boy and World map pages hold one list per category instead of sliders: iPick is 0 for Vanilla or the slot number of the chosen pack.
 bool Function IsPick(string asCategory)
-	Return asCategory == "ADT_PipBoyScreen" || asCategory == "ADT_PipBoySkin"
+	Return asCategory == "ADT_PipBoyScreen" || asCategory == "ADT_PipBoySkin" || asCategory == "ADT_PipBoyMap"
 EndFunction
 
 ; The list choice in effect: the slot the plugin has at 100, or 0 for Vanilla.

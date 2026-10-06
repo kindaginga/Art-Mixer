@@ -51,13 +51,16 @@ public sealed class PluginFile
     public Dictionary<FormKey, List<Substitution>> MaterialSwaps { get; } = [];
     public Dictionary<FormKey, string[]> TextureSets { get; } = [];  // TX00 to TX07, relative to Textures, empty where unset
     public Dictionary<FormKey, FormKey> LoadScreens { get; } = [];     // loading screen (LSCR) -> the form it shows (NNAM)
+    public Dictionary<FormKey, int[]> WorldMaps { get; } = [];         // world space (WRLD) -> its world map data (MNAM): usable width, usable height, NW cell x, y, SE cell x, y
+    private bool _worldChildren = true;
     /// <summary>Every record read, as type and identity.</summary>
     public List<(string Type, FormKey Key)> Records { get; } = [];
 
-    /// <summary>Reads a plugin. With a group filter only top-level groups whose record type passes are read.</summary>
-    public static PluginFile Read(string name, byte[] data, Func<string, bool>? readGroup = null)
+    /// <summary>Reads a plugin. With a group filter only top-level groups whose record type passes are read; without world
+    /// children only the world space records themselves are read, not the cells and references grouped under them.</summary>
+    public static PluginFile Read(string name, byte[] data, Func<string, bool>? readGroup = null, bool worldChildren = true)
     {
-        var plugin = new PluginFile { Name = name };
+        var plugin = new PluginFile { Name = name, _worldChildren = worldChildren };
         if (data.Length < 24 || Encoding.ASCII.GetString(data, 0, 4) != "TES4") throw new InvalidDataException("not a plugin file (no TES4 header)");
         var headerSize = BitConverter.ToInt32(data, 4);
         plugin.Localized = (BitConverter.ToUInt32(data, 8) & 0x80) != 0;
@@ -138,6 +141,12 @@ public sealed class PluginFile
             if (type == "GRUP")
             {
                 if (size < 24 || position + size > end) throw new InvalidDataException($"broken group at {position}");
+                // Group type 1 holds a world space's cells.
+                if (!_worldChildren && BitConverter.ToInt32(data, position + 12) == 1)
+                {
+                    position += size;
+                    continue;
+                }
                 ReadGroupContents(data, position + 24, position + size);
                 position += size;
                 continue;
@@ -186,6 +195,17 @@ public sealed class PluginFile
             }
             Flush();
             MaterialSwaps[key] = substitutions;
+            return;
+        }
+        if (type == "WRLD")
+        {
+            foreach (var (name, field) in Fields(fields))
+            {
+                if (name == "MNAM" && field.Length >= 16)
+                {
+                    WorldMaps[key] = [BitConverter.ToInt32(field, 0), BitConverter.ToInt32(field, 4), BitConverter.ToInt16(field, 8), BitConverter.ToInt16(field, 10), BitConverter.ToInt16(field, 12), BitConverter.ToInt16(field, 14)];
+                }
+            }
             return;
         }
         if (type == "LSCR")

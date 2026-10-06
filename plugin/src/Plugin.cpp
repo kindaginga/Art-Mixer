@@ -63,6 +63,7 @@ namespace
 			ADT::Packs::OnGameDataReady();
 			ADT::Distributor::ApplyTextureSets();
 			ADT::Distributor::ApplyBounds();
+			ADT::Distributor::ApplyWorldMap();
 			if (!ADT::AutoTest::Skips("pickmodels")) ADT::Distributor::ApplyPickModels();
 			if (!ADT::AutoTest::Skips("inventory")) ADT::Inventory::OnGameDataReady();
 			if (!ADT::AutoTest::Skips("loadscreens")) ADT::LoadScreens::OnGameDataReady();

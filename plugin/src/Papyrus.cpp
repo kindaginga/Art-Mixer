@@ -113,7 +113,7 @@ namespace ADT::Papyrus
 				const auto category = Settings::NormalizeCategory(section);
 				const int shown = static_cast<int>(Packs::SlotsFor(category).size());
 				const auto applied = [&](int a_slot) { return a_defaults ? 0 : Settings::Percent(category, a_slot); };
-				if (category == "pipboyscreen" || category == "pipboyskin") {
+				if (category == "pipboyscreen" || category == "pipboyskin" || category == "pipboymap") {
 					int pick = 0;
 					for (int slot = 1; slot <= shown && pick == 0; ++slot) {
 						if (applied(slot) == 100) pick = slot;

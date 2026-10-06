@@ -41,6 +41,7 @@ public sealed class ImageOutput
     public bool DropSwap { get; init; }  // the object loads the model without its vanilla material swap
     public string? Name { get; init; }   // the name the object shows while this pack's version shows there
     public short[]? Bounds { get; init; } // object bounds the pack's version needs (min x, y, z, max x, y, z)
+    public int[]? MapBounds { get; init; } // the Commonwealth world map data (usable width, height, NW cell x, y, SE cell x, y) the world map needs; none means the game's
     public string? SwapForm { get; init; } // the material swap form ("file:local id", empty for none) the object gets with this version
     public string? Card { get; set; }     // the game's loading screen magazine with this cover (relative to Meshes), for a magazine cover
 
@@ -140,7 +141,7 @@ public sealed class Writer
         // Textures the game loads by name: the pack's copy, which the plugin loads in place of the game's.
         foreach (var image in images.Where(i => i.Slot != null && i.Slot.StartsWith('%')).OrderBy(i => i.Slot, StringComparer.OrdinalIgnoreCase))
         {
-            pack.Images.Add(new ImageOutput { Category = image.Category, Material = Copy(image.Swaps[image.Slot![1..]]), Slot = image.Slot, Width = image.Width, Height = image.Height });
+            pack.Images.Add(new ImageOutput { Category = image.Category, Material = Copy(image.Swaps[image.Slot![1..]]), Slot = image.Slot, Width = image.Width, Height = image.Height, MapBounds = image.MapBounds });
         }
         // Texture set textures: the pack's copy, which the plugin writes into the texture set.
         foreach (var image in images.Where(i => i.Slot != null && i.Slot.StartsWith('!')).OrderBy(i => i.Slot, StringComparer.OrdinalIgnoreCase))
@@ -392,7 +393,7 @@ public sealed class Writer
                     own = VanillaObject(slot, category, versions.ToList());
                     break;
                 case '%':
-                    if (_game.ReadTexture(target) is { } texture) own = new ImageOutput { Category = category, Material = VanillaTexture(target, texture), Slot = slot };
+                    if (_game.ReadTexture(target) is { } texture) own = new ImageOutput { Category = category, Material = VanillaTexture(target, texture), Slot = slot, MapBounds = category == "pipboymap" ? _game.GameWorldMap() : null };
                     break;
                 case '=':
                     if (SwapShows(target) is { } shown && VanillaMaterial(shown) is { } shownCopy) own = new ImageOutput { Category = category, Material = shownCopy, Slot = slot };
@@ -729,9 +730,9 @@ public sealed class Writer
 
     // The share pages in menu order, their MCM section names and their page titles; the ADT_ prefix keeps Papyrus from
     // recasing the section names (its strings share one case-insensitive cache).
-    private static readonly string[] Categories = ["paintings", "posters", "signage", "magazines", "quest", "other", "pipboyscreen", "pipboyskin", "loadingscreens"];
-    private static readonly string[] Titles = ["ADT_Paintings", "ADT_Posters", "ADT_Signage", "ADT_Magazines", "ADT_Quest", "ADT_Other", "ADT_PipBoyScreen", "ADT_PipBoySkin", "ADT_LoadingScreens"];
-    private static readonly string[] PageTitles = ["Paintings", "Posters", "Signage", "Magazines", "Quest", "Other replacers", "Pip-Boy screen", "Pip-Boy skin", "Loading screens"];
+    private static readonly string[] Categories = ["paintings", "posters", "signage", "magazines", "quest", "other", "pipboyscreen", "pipboyskin", "pipboymap", "loadingscreens"];
+    private static readonly string[] Titles = ["ADT_Paintings", "ADT_Posters", "ADT_Signage", "ADT_Magazines", "ADT_Quest", "ADT_Other", "ADT_PipBoyScreen", "ADT_PipBoySkin", "ADT_PipBoyMap", "ADT_LoadingScreens"];
+    private static readonly string[] PageTitles = ["Paintings", "Posters", "Signage", "Magazines", "Quest", "Other replacers", "Pip-Boy screen", "Pip-Boy skin", "World map", "Loading screens"];
 
     /// <summary>Locations with game files of their own: the folder their art sits in, the plugin their records come from and the page heading.</summary>
     private static readonly (string Folder, string Plugin, string Name)[] Locations = [("dlc03", "dlccoast.esm", "Far Harbor"), ("dlc04", "dlcnukaworld.esm", "Nuka-World")];
@@ -936,6 +937,7 @@ public sealed class Writer
                     if (i.SwapForm != null) row["swapForm"] = i.SwapForm;
                     if (i.Name != null) row["name"] = i.Name;
                     if (i.Bounds != null) row["bounds"] = i.Bounds;
+                    if (i.MapBounds != null) row["mapBounds"] = i.MapBounds;
                     if (i.Card != null) row["card"] = i.Card;
                     return row;
                 }),
@@ -946,11 +948,16 @@ public sealed class Writer
 
     /// <summary>Generates the MCM pages: one per art category, listing the packs whose one slider sits there (the page with most of
     /// the pack's art), packs tied to one location under that location's heading; the Other replacers page (see OtherPage); and one
-    /// Pip-Boy page with a list for the screen background and one for the skin (Vanilla or a pack), stored as iPick.</summary>
+    /// Pip-Boy page with a list for the screen background and one for the skin, and a World map page with a list for the world
+    /// map (each Vanilla or a pack), stored as iPick.</summary>
     public void WriteMcm(List<PackOutput> packs, int slotsPerCategory)
     {
         var pages = new List<object>();
         var pipboyContent = new List<object>
+        {
+            new { type = "text", text = "Pick a pack, or Vanilla.", html = false },
+        };
+        var mapContent = new List<object>
         {
             new { type = "text", text = "Pick a pack, or Vanilla.", html = false },
         };
@@ -986,8 +993,8 @@ public sealed class Writer
                 if (slots.Count == 0) continue;
                 var options = new List<string> { "Vanilla" };
                 options.AddRange(slots.Select(p => p.Name));
-                var label = category == "pipboyscreen" ? "Screen background" : "Skin";
-                pipboyContent.Add(new { id = $"iPick:{sectionName}", type = "dropdown", text = label, help = Report.Count(slots.Count, "pack", "packs"), valueOptions = new { options = options.ToArray(), sourceType = "ModSettingInt" } });
+                var label = category switch { "pipboyscreen" => "Screen background", "pipboyskin" => "Skin", _ => "World map" };
+                (category == "pipboymap" ? mapContent : pipboyContent).Add(new { id = $"iPick:{sectionName}", type = "dropdown", text = label, help = Report.Count(slots.Count, "pack", "packs"), valueOptions = new { options = options.ToArray(), sourceType = "ModSettingInt" } });
                 continue;
             }
             foreach (var pack in slots) settings.Append($"iPack_{pack.Id}=0\n");
@@ -1018,6 +1025,7 @@ public sealed class Writer
             pages.Add(new { pageDisplayName = PageTitles[index], content = page });
         }
         if (pipboyContent.Count > 1) pages.Add(new { pageDisplayName = "Pip-Boy", content = pipboyContent.ToArray() });
+        if (mapContent.Count > 1) pages.Add(new { pageDisplayName = "World map", content = mapContent.ToArray() });
         var config = new
         {
             modName = "ArtDistributionTool",
@@ -1428,6 +1436,29 @@ public sealed class GameFiles
     }
 
     public bool IsGameMaster(string plugin) => GameMasters().Contains(plugin, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The Commonwealth world map data (MNAM: usable width, height, NW cell x, y, SE cell x, y) the game's own plugins
+    /// give the world, the last one's when several do, so Vanilla puts the game's world map back with its own cells.</summary>
+    public int[]? GameWorldMap()
+    {
+        if (_gameWorldMapRead) return _gameWorldMap;
+        _gameWorldMapRead = true;
+        var commonwealth = new FormKey("Fallout4.esm", 0x3C);
+        foreach (var master in GameMasters())
+        {
+            try
+            {
+                if (PluginFile.Read(master, File.ReadAllBytes(Path.Combine(_dataFolder, master)), label => label == "WRLD", worldChildren: false).WorldMaps.TryGetValue(commonwealth, out var map)) _gameWorldMap = map;
+            }
+            catch (Exception e)
+            {
+                _report.Warn($"cannot read the world map data of {master}: {e.Message}");
+            }
+        }
+        return _gameWorldMap;
+    }
+    private int[]? _gameWorldMap;
+    private bool _gameWorldMapRead;
 
     /// <summary>Reads the model block of every record of the given types, and every material swap, from the game's own
     /// plugins; a later plugin's version of a record wins, as in the game.</summary>

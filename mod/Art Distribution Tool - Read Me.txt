@@ -104,14 +104,18 @@ was left, so keep such a mod installed for it. "Find installed art mods" lists o
   - Pip-Boy replacers: the screen background (textures\AnimObjects\Pipboy\PipBoyScreen_d.dds) and the
     device skin (PipBoy01_d, PipBoy02_d, PipBoyLabels01_d, PipBoyInterior01_d, PipBoyGlow01_d) get their own
     "Pip-Boy" page: one list for the screen background and one for the skin, Vanilla or one pack each.
+  - World map replacers: the Pip-Boy world map (textures\Interface\Pip-Boy\WorldMap_d.dds) gets its own
+    "World map" page with one list, Vanilla or one pack. When the mod's plugin gives the map new cells (a
+    satellite map drawn wider than the game's, for example), the pack keeps them and the map markers line
+    up with the picked map.
   - Textures at vanilla art paths (replacer mods): each picture is tied to the vanilla frame it replaces.
   - Any other texture or material over one of the game's own (props, food boxes, bottles, signs): it goes
     on the "Other replacers" page, or on the page of its kind.
   - Models over one of the game's own, and models or names a mod's plugin gives the game's own objects.
     Pip-Boy models follow the Pip-Boy skin list.
   - Textures the game loads by their name rather than through a material: the Pip-Boy screen effects
-    (these follow the Pip-Boy screen list), and texture sets of art objects. The Pip-Boy world map, perk
-    chart and Pip-Boy interface files are not converted; they stay with their mod.
+    (these follow the Pip-Boy screen list), the world map, and texture sets of art objects. The perk chart
+    and Pip-Boy interface files (a map interface mod, for example) are not converted; they stay with their mod.
   - Main menu interface files over the game's own, from a mod that also ships a main menu video or music;
     they show while that mod's background is picked.
   - A mod plugin's changes to the game's own material swaps and texture sets.
@@ -143,6 +147,7 @@ MENU
                    replaces, off shows the game's own. Packs that are on for the same object share it
                    evenly; the switch's help line gives the split.
   Pip-Boy page     two lists, screen background and skin: Vanilla or the pack the Pip-Boy wears.
+  World map page   one list: Vanilla or the pack whose world map the Pip-Boy shows.
   Loading screens page   one slider per pack with magazine covers: the percent of all loading screens that
                    show one of its covers, on the game's own turning magazine with the pack's back. 100
                    makes every loading screen a pack magazine, 0 none; the rest are the game's own.
@@ -151,8 +156,8 @@ MENU
   Shuffle layout   picks a new arrangement with the same slider settings. The arrangement otherwise
                    stays the same across saves and loads until you apply a change.
   New layout on every load   off by default; when on, every save you load gets a new arrangement.
-  Reset all settings   back to defaults: all art vanilla (every pack slider at 0), Pip-Boy screen and skin
-                       on Vanilla, new layout on every load off, layout seed 1,
+  Reset all settings   back to defaults: all art vanilla (every pack slider at 0), Pip-Boy screen, skin
+                       and world map on Vanilla, new layout on every load off, layout seed 1,
                        vanilla main menu background and music.
   When the converter is run again and the packs it writes changed (a mod added or removed, for example),
   every setting goes back to its default by itself, as with Reset all settings, and a message says "the

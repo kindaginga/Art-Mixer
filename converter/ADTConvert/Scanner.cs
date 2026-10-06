@@ -27,6 +27,7 @@ public sealed class FoundImage
     public string? Label { get; init; }                     // the object a plugin reassigns, for the slot list
     public string? Name { get; init; }                      // the name a plugin gives the object, shown on it while this pack's version shows
     public short[]? Bounds { get; init; }                   // the object bounds (OBND min x, y, z, max x, y, z) a plugin gives the object
+    public int[]? MapBounds { get; init; }                  // the Commonwealth world map data (MNAM) a plugin gives the world map: usable width, height, NW cell x, y, SE cell x, y
     public int Width { get; init; }
     public int Height { get; init; }
 
@@ -43,7 +44,7 @@ public sealed class FoundImage
     {
         using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
         foreach (var path in SourceFiles().Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(p => p, StringComparer.OrdinalIgnoreCase)) sha.AppendData(source.Files[path].Read());
-        var extras = $"{Name}|{GameMaterial}|{GameModel}|{(Bounds == null ? "" : string.Join(",", Bounds))}|{DropSwap}|{SwapForm}|{GameTexture}|{string.Join(";", Substitutions.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase).Select(kv => kv.Key + "=" + kv.Value))}";
+        var extras = $"{Name}|{GameMaterial}|{GameModel}|{(Bounds == null ? "" : string.Join(",", Bounds))}|{(MapBounds == null ? "" : string.Join(",", MapBounds))}|{DropSwap}|{SwapForm}|{GameTexture}|{string.Join(";", Substitutions.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase).Select(kv => kv.Key + "=" + kv.Value))}";
         return Convert.ToHexString(sha.GetHashAndReset()) + "|" + (Slot ?? "") + "|" + extras;
     }
 
@@ -57,7 +58,7 @@ public sealed class FoundImage
             Category = Category, Diffuse = P(Diffuse), Normal = P(Normal), Slot = Slot, MaterialSource = P(MaterialSource), GameMaterial = GameMaterial, InlineKey = InlineKey,
             Swaps = Swaps.ToDictionary(kv => kv.Key, kv => prefix + kv.Value, StringComparer.OrdinalIgnoreCase), Width = Width, Height = Height,
             ModelSource = P(ModelSource), ModelFiles = ModelFiles.ToDictionary(kv => kv.Key, kv => prefix + kv.Value, StringComparer.OrdinalIgnoreCase),
-            GameModel = GameModel, Substitutions = new Dictionary<string, string>(Substitutions, StringComparer.OrdinalIgnoreCase), DropSwap = DropSwap, SwapForm = SwapForm, GameTexture = GameTexture, Label = Label, Name = Name, Bounds = Bounds,
+            GameModel = GameModel, Substitutions = new Dictionary<string, string>(Substitutions, StringComparer.OrdinalIgnoreCase), DropSwap = DropSwap, SwapForm = SwapForm, GameTexture = GameTexture, Label = Label, Name = Name, Bounds = Bounds, MapBounds = MapBounds,
         };
     }
 }
@@ -72,7 +73,7 @@ public static class Scanner
     // of the signage folder are signs.
     private static readonly (string Needle, string Category)[] VanillaCategories =
     [
-        ("animobjects\\pipboy\\pipboyscreen", "pipboyscreen"), ("animobjects\\pipboy\\", "pipboyskin"),
+        ("interface\\pip-boy\\worldmap", "pipboymap"), ("animobjects\\pipboy\\pipboyscreen", "pipboyscreen"), ("animobjects\\pipboy\\", "pipboyskin"),
         ("pipboy\\characterassets\\", "pipboyskin"), ("props\\pipboymiscitem\\", "pipboyskin"), ("animobjects\\pipboy.nif", "pipboyskin"), ("skeletons\\skeletonpipboyarm", "pipboyskin"),
         ("comicsandmagazines", "magazines"), ("magazine", "magazines"), ("almanac", "magazines"),
         ("paintingsgeneric", "paintings"), ("\\painting", "paintings"),
@@ -96,17 +97,43 @@ public static class Scanner
     {
         var lower = System.Text.RegularExpressions.Regex.Replace(path.ToLowerInvariant().Replace('/', '\\').TrimStart('\\'), @"^dlc\d+\\", "");
         if (ArtFolders.Any(folder => lower.StartsWith(folder, StringComparison.Ordinal))) return true;
-        return ClassifyVanilla(lower, "") is "pipboyscreen" or "pipboyskin" or "quest" or "signage" || ByNameCategory(lower) == "pipboyscreen";
+        return ClassifyVanilla(lower, "") is "pipboyscreen" or "pipboyskin" or "pipboymap" or "quest" or "signage" || ByNameCategory(lower) == "pipboyscreen";
     }
 
     /// <summary>Whether a replaced game file is converted: filed under a picture or Pip-Boy category, or at an art path.</summary>
     public static bool InScope(string category, string path) => category != "other" || IsArtPath(path);
 
-    // Textures the game loads by name that belong to a pick: the Pip-Boy screen effects follow the Pip-Boy screen list.
+    // Textures the game loads by name that belong to a pick: the Pip-Boy screen effects follow the Pip-Boy screen list, the world map its own list.
     private static readonly (string Needle, string Category)[] ByNameCategories =
     [
         ("animobjects\\pipboy\\pipboyfx", "pipboyscreen"), ("animobjects\\pipboy\\pipboyscan", "pipboyscreen"), ("animobjects\\pipboy\\pipboyvscan", "pipboyscreen"),
+        ("interface\\pip-boy\\worldmap", "pipboymap"),
     ];
+
+    /// <summary>Whether a texture is one this list names as loaded by name (the Pip-Boy map page asks the texture loader for the world map by name).</summary>
+    private static bool ListedByName(string texture) => ByNameCategories.Any(c => texture.StartsWith(c.Needle, StringComparison.OrdinalIgnoreCase));
+
+    // The Commonwealth world space, whose world map data a world map mod's plugin may change.
+    private static readonly FormKey Commonwealth = new("Fallout4.esm", 0x3C);
+
+    /// <summary>The Commonwealth world map data (MNAM) the mod's plugins give the world, the last plugin's when several do, or null.</summary>
+    private static int[]? ModWorldMap(Source source, Report report)
+    {
+        int[]? bounds = null;
+        foreach (var file in source.Files.Values.Where(f => Path.GetExtension(f.DataPath).ToLowerInvariant() is ".esp" or ".esm" or ".esl").OrderBy(f => f.DataPath, StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                if (PluginFile.Read(Path.GetFileName(file.DataPath), file.Read(), label => label == "WRLD", worldChildren: false).WorldMaps.TryGetValue(Commonwealth, out var map)) bounds = map;
+            }
+            catch (Exception e)
+            {
+                report.Warn($"{source.Name}: cannot read plugin {file.DataPath}: {e.Message}");
+            }
+        }
+        if (bounds != null) report.Info($"{source.Name}: its plugin sets the world map's cells to {bounds[2]},{bounds[3]} to {bounds[4]},{bounds[5]}; the pack's world map carries them");
+        return bounds;
+    }
 
     /// <summary>The page a texture the game loads by name is shared on.</summary>
     public static string ByNameCategory(string texture)
@@ -241,12 +268,14 @@ public static class Scanner
         var byName = 0;
         foreach (var (texture, file) in shipped)
         {
-            if (found.Any(f => f.Slot == "%" + texture) || !game.HasTexture(texture) || !game.LoadsByName(texture) || !Keep(ByNameCategory(texture), texture)) continue;
+            if (found.Any(f => f.Slot == "%" + texture) || !game.HasTexture(texture) || !(game.LoadsByName(texture) || ListedByName(texture)) || !Keep(ByNameCategory(texture), texture)) continue;
             var dims = file.Dimensions();
+            var category = ByNameCategory(texture);
             found.Add(new FoundImage
             {
-                Category = ByNameCategory(texture), Slot = "%" + texture, Swaps = new(StringComparer.OrdinalIgnoreCase) { [texture] = file.DataPath },
+                Category = category, Slot = "%" + texture, Swaps = new(StringComparer.OrdinalIgnoreCase) { [texture] = file.DataPath },
                 Width = dims?.Width ?? 0, Height = dims?.Height ?? 0,
+                MapBounds = category == "pipboymap" ? ModWorldMap(source, report) : null,
             });
             byName++;
         }

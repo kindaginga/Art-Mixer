@@ -13,6 +13,7 @@ namespace ADT::Packs
 		std::string name;        // the name the object shows while this image is its version, empty for none
 		std::string card;        // the game's loading screen magazine with this cover (relative to Meshes), empty for none
 		std::optional<std::array<std::int16_t, 6>> bounds;  // object bounds this version needs: min x, y, z, max x, y, z
+		std::optional<std::array<std::int32_t, 6>> mapBounds;  // the Commonwealth world map data this world map needs: usable width, height, NW cell x, y, SE cell x, y
 	};
 
 	// An interface file a pack replaces: the game's path (lowercase, relative to Data), the pack's copy and the pick it follows.

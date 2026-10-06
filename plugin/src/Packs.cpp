@@ -124,6 +124,11 @@ namespace ADT::Packs
 						for (std::size_t i = 0; i < 6; ++i) values[i] = static_cast<std::int16_t>((*b)[i].get<int>());
 						image.bounds = values;
 					}
+					if (const auto b = img.find("mapBounds"); b != img.end() && b->is_array() && b->size() == 6) {
+						std::array<std::int32_t, 6> values{};
+						for (std::size_t i = 0; i < 6; ++i) values[i] = (*b)[i].get<std::int32_t>();
+						image.mapBounds = values;
+					}
 					const auto category = Settings::NormalizeCategory(Str(img, "category"));
 					if ((image.material.empty() && image.name.empty() && !image.bounds) || category.empty()) continue;
 					pack.images[category].push_back(std::move(image));

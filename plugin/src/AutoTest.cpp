@@ -665,10 +665,10 @@ namespace ADT::AutoTest
 			if (!a_loaded || s_finishIssued.exchange(true)) return;
 			std::thread([] {
 				std::this_thread::sleep_for(std::chrono::seconds(10));
-				// Leaves out the Pip-Boy lists and the Other replacers switches.
+				// Leaves out the Pip-Boy and world map lists and the Other replacers switches.
 				const auto tested = [](std::string_view a_section) {
 					const auto category = Settings::NormalizeCategory(a_section);
-					return category != "pipboyscreen" && category != "pipboyskin" && category != "other";
+					return !category.starts_with("pipboy") && category != "other";
 				};
 				const auto sections = Packs::Sections();
 				std::string section, other;

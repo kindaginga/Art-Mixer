@@ -412,7 +412,7 @@ namespace ADT::Distributor
 		// Categories chosen from a list (one pack for the whole game) rather than shared.
 		[[nodiscard]] bool IsPickCategory(std::string_view a_category)
 		{
-			return a_category == "pipboyskin" || a_category == "pipboyscreen";
+			return a_category == "pipboyskin" || a_category == "pipboyscreen" || a_category == "pipboymap";
 		}
 
 		void BuildPickModels()
@@ -501,6 +501,51 @@ namespace ADT::Distributor
 		if (matching.empty()) return {};
 		// Several variants of one texture (a mod's installer options pooled into one pack) are picked among by hash.
 		return matching[static_cast<std::size_t>(Hash(fmt::format("texture|{}|image|{}", it->first, Settings::Get().seed)) % matching.size())]->material;
+	}
+
+	void ApplyWorldMap()
+	{
+		// The world map texture (relative to Textures, lowercase) and the game's cells for it, from the vanilla pack.
+		std::string texture;
+		std::optional<std::array<std::int32_t, 6>> bounds;
+		if (const auto* vanilla = Packs::Vanilla()) {
+			if (const auto it = vanilla->images.find("pipboymap"); it != vanilla->images.end()) {
+				for (const auto& image : it->second) {
+					if (!image.slot.starts_with('%') || !image.mapBounds) continue;
+					texture = Settings::Lower(image.slot.substr(1));
+					bounds = image.mapBounds;
+					break;
+				}
+			}
+		}
+		if (texture.empty()) return;
+		auto* world = RE::TESForm::GetFormByID<RE::TESWorldSpace>(0x3C);
+		if (!world) {
+			logger::warn("distributor: the Commonwealth world space 0000003C is missing; the world map keeps its cells");
+			return;
+		}
+		// The chosen pack's world map, with its own cells when its plugin gave the map new ones.
+		const auto material = ChooseTexture(texture);
+		std::string shown = "the game's";
+		for (const auto& pack : Packs::All()) {
+			if (pack.vanilla || material.empty()) continue;
+			const auto it = pack.images.find("pipboymap");
+			if (it == pack.images.end()) continue;
+			for (const auto& image : it->second) {
+				if (image.material != material) continue;
+				shown = pack.name + "'s";
+				if (image.mapBounds) bounds = image.mapBounds;
+			}
+		}
+		auto& map = world->worldMapData;
+		const auto& b = *bounds;
+		map.usableWidth = static_cast<std::uint32_t>(b[0]);
+		map.usableHeight = static_cast<std::uint32_t>(b[1]);
+		map.nwCellX = static_cast<std::int16_t>(b[2]);
+		map.nwCellY = static_cast<std::int16_t>(b[3]);
+		map.seCellX = static_cast<std::int16_t>(b[4]);
+		map.seCellY = static_cast<std::int16_t>(b[5]);
+		logger::info("distributor: world map shows {} map, cells NW {},{} SE {},{}", shown, map.nwCellX, map.nwCellY, map.seCellX, map.seCellY);
 	}
 
 	void ApplyBounds()
@@ -660,6 +705,7 @@ namespace ADT::Distributor
 	{
 		s_reapplyQueued.store(false);
 		ApplyTextureSets();
+		ApplyWorldMap();
 		if (!AutoTest::Skips("pickmodels")) ApplyPickModels();
 		LoadScreens::Reassign();
 		const auto values = Settings::Get();
