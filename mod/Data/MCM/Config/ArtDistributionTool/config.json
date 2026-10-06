@@ -8,7 +8,7 @@
   "content": [
     {
       "type": "text",
-      "text": "\u003Cfont size=\u002724\u0027\u003EArt Distribution Tool\u003C/font\u003E",
+      "text": "\u003Cfont size=\u002724\u0027\u003E\u003Cfont color=\u0027#FF0000\u0027\u003EArt\u003C/font\u003E \u003Cfont color=\u0027#FFFFFF\u0027\u003EDistribution\u003C/font\u003E \u003Cfont color=\u0027#A020F0\u0027\u003ETool\u003C/font\u003E\u003C/font\u003E",
       "html": true
     },
     {

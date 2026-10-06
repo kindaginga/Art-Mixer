@@ -3,7 +3,7 @@
   <Name>Art Distribution Tool</Name>
   <Version>0.1.0</Version>
   <Website>https://www.nexusmods.com/profile/kindaginga/mods</Website>
-  <Description>Distributes art from several art mods across the game's paintings, posters, signs and magazines by the percentages you set in the MCM. Requires F4SE, MCM and the Runtime Database; the converter requires the .NET 10 Desktop Runtime.</Description>
+  <Description>Distributes art from several art mods across the game's paintings, posters, signs, magazines, props, Pip-Boy, world map, loading screens and main menu by the percentages and picks you set in the MCM. Requires F4SE, MCM and the Runtime Database; the converter requires the .NET 10 Desktop Runtime.</Description>
   <Groups>
     <element>Utilities</element>
   </Groups>

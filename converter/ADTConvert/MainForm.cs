@@ -24,6 +24,8 @@ public sealed class MainForm : Form
     {
         SuspendLayout();
         Text = Program.Title;
+        // Shows the Art Distribution Tool icon in the title bar.
+        using (var icon = typeof(MainForm).Assembly.GetManifestResourceStream("ADT.ico")) if (icon != null) Icon = new Icon(icon);
         // Every size below is in pixels at 96 DPI; the window scales them to the display it is on.
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;

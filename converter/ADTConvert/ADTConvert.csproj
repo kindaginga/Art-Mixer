@@ -16,7 +16,12 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <CETCompat>false</CETCompat>
+    <ApplicationIcon>ADT.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="ADT.ico" LogicalName="ADT.ico" />
+  </ItemGroup>
 
   <ItemGroup>
   </ItemGroup>

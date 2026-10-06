@@ -389,13 +389,10 @@ namespace ADT::Engine
 			const auto base = REL::Module::get().base();
 			reinterpret_cast<PropertyCtor>(base + (a_lighting ? s_functions->lightingPropertyCtor : s_functions->effectPropertyCtor))(holder);
 			auto*& slot = *reinterpret_cast<std::uint8_t**>(holder + 0x58);
-			if (s_holderLogs.fetch_add(1) < 5) logger::info("engine: release holder {} ({}) starts with material {}", fmt::ptr(holder), a_lighting ? "lighting" : "effect", fmt::ptr(slot));
-			RE::NiPointer<RE::NiRefObject> owner{ reinterpret_cast<RE::NiRefObject*>(holder) };
-			if (slot) {
-				logger::warn("engine: a new shader property already holds material {}; material {} stays held", fmt::ptr(slot), fmt::ptr(a_material));
-				return;
-			}
+			if (s_holderLogs.fetch_add(1) < 5) logger::info("engine: release holder {} ({}) replaces its default material {} with material {}", fmt::ptr(holder), a_lighting ? "lighting" : "effect", fmt::ptr(slot), fmt::ptr(a_material));
+			// Puts the retired material in the holder's slot in place of the shared default material.
 			slot = a_material;
+			RE::NiPointer<RE::NiRefObject> owner{ reinterpret_cast<RE::NiRefObject*>(holder) };
 		}
 
 		void QueueRelease();
