@@ -25,15 +25,16 @@ namespace ADT::Engine
 			std::size_t shaderDataDtor;
 			std::size_t lightingPropertyCtor;
 			std::size_t effectPropertyCtor;
+			std::size_t lightingLoadTextureSet;
 		};
 
 		[[nodiscard]] std::optional<MaterialFunctions> FunctionsForRuntime(const REL::Version& a_version)
 		{
 			const auto v = a_version.string();
-			if (v == "1-10-163-0") return MaterialFunctions{ 0x1C9D170, 0x27C4550, 0x27BD630, 0x3901F0, 0x27CC880, 0x27CAAC0 };
-			if (v == "1-10-984-0") return MaterialFunctions{ 0x168EBF0, 0x2014440, 0x200D340, 0x543AC0, 0x201BF90, 0x201A330 };
-			if (v == "1-11-169-0") return MaterialFunctions{ 0x17A5110, 0x2164FE0, 0x215DEE0, 0x595010, 0x216CB30, 0x216AED0 };
-			if (v == "1-11-240-0") return MaterialFunctions{ 0x17A9D80, 0x21715E0, 0x216A4E0, 0x597D70, 0x2179130, 0x21774D0 };
+			if (v == "1-10-163-0") return MaterialFunctions{ 0x1C9D170, 0x27C4550, 0x27BD630, 0x3901F0, 0x27CC880, 0x27CAAC0, 0x27CD200 };
+			if (v == "1-10-984-0") return MaterialFunctions{ 0x168EBF0, 0x2014440, 0x200D340, 0x543AC0, 0x201BF90, 0x201A330, 0x201C900 };
+			if (v == "1-11-169-0") return MaterialFunctions{ 0x17A5110, 0x2164FE0, 0x215DEE0, 0x595010, 0x216CB30, 0x216AED0, 0x216D4A0 };
+			if (v == "1-11-240-0") return MaterialFunctions{ 0x17A9D80, 0x21715E0, 0x216A4E0, 0x597D70, 0x2179130, 0x21774D0, 0x2179AA0 };
 			return std::nullopt;
 		}
 
@@ -438,6 +439,83 @@ namespace ADT::Engine
 			}
 			if (queue) QueueRelease();
 		}
+
+		std::atomic<int> s_textureSetLogs{ 0 };
+		std::atomic<int> s_copyLogs{ 0 };
+
+		// True when the bytes at the address are committed, readable memory.
+		[[nodiscard]] bool Readable(const void* a_ptr, std::size_t a_size)
+		{
+			MEMORY_BASIC_INFORMATION info{};
+			if (!a_ptr || VirtualQuery(a_ptr, &info, sizeof(info)) != sizeof(info)) return false;
+			if (info.State != MEM_COMMIT || (info.Protect & (PAGE_NOACCESS | PAGE_GUARD)) != 0) return false;
+			const auto end = reinterpret_cast<std::uintptr_t>(info.BaseAddress) + info.RegionSize;
+			return reinterpret_cast<std::uintptr_t>(a_ptr) + a_size <= end;
+		}
+
+		// The texture set a material file loaded into the shader data: the one pointer in it to a BSShaderTextureSet.
+		[[nodiscard]] RE::BSTextureSet* LoadedTextureSet(std::uint8_t* a_data, std::size_t a_size)
+		{
+			static const REL::Relocation<std::uintptr_t> vtable{ RE::VTABLE::BSShaderTextureSet[0] };
+			for (std::size_t at = 0; at + sizeof(void*) <= a_size; at += sizeof(void*)) {
+				auto* candidate = *reinterpret_cast<std::uintptr_t**>(a_data + at);
+				if (!Readable(candidate, sizeof(std::uintptr_t))) continue;
+				if (*candidate == vtable.address()) return reinterpret_cast<RE::BSTextureSet*>(candidate);
+			}
+			return nullptr;
+		}
+
+		// Gives a lighting shader's material the material file's texture set where it still holds another one, as it does for a
+		// shader the model carries inline: the material data is applied, but the textures stay the model's own.
+		void TakeTextureSet(RE::NiAVObject* a_geometry, std::uint8_t* a_shaderData, const std::string& a_file)
+		{
+			auto* shader = AnyShader(a_geometry);
+			static const REL::Relocation<const RE::NiRTTI*> lightingRtti{ RE::Ni_RTTI::BSLightingShaderProperty };
+			const auto* rtti = shader ? shader->GetRTTI() : nullptr;
+			if (!rtti || !rtti->IsKindOf(lightingRtti.get())) return;
+			auto* material = reinterpret_cast<std::uint8_t*>(shader->material);
+			if (!material) return;
+			auto* loaded = LoadedTextureSet(a_shaderData, 0x1E0);
+			if (!loaded) {
+				if (s_textureSetLogs.fetch_add(1) < 20) logger::warn("engine: {} loaded no texture set, so the shape keeps its own textures", a_file);
+				return;
+			}
+			auto*& current = *reinterpret_cast<RE::BSTextureSet**>(material + 0x78);
+			const auto type = static_cast<RE::BSShaderProperty::TextureTypeEnum>(0);
+			const char* wanted = loaded->GetTextureFilename(type);
+			const char* held = current ? current->GetTextureFilename(type) : nullptr;
+			if (current == loaded || (wanted && held && Settings::Lower(wanted) == Settings::Lower(held))) return;
+			// A material other shapes also hold is copied first (the material's Create and CopyMembers, virtuals 1 and 2), so only this
+			// shape changes; the shape's reference to the shared one is released like any replaced material.
+			const auto references = *reinterpret_cast<volatile LONG*>(material + 0x08);
+			if (references > 1) {
+				const auto* functions = *reinterpret_cast<std::uintptr_t**>(material);
+				using CreateFn = std::uint8_t* (*)(void*);
+				using CopyMembersFn = void (*)(void*, const void*);
+				auto* copy = reinterpret_cast<CreateFn>(functions[1])(material);
+				if (!copy) {
+					logger::warn("engine: {} could not copy the shared material {}; the shape keeps the textures {}", a_file, fmt::ptr(material), held ? held : "");
+					return;
+				}
+				reinterpret_cast<CopyMembersFn>(functions[2])(copy, material);
+				InterlockedIncrement(reinterpret_cast<volatile LONG*>(copy + 0x08));
+				shader->material = reinterpret_cast<RE::BSShaderMaterial*>(copy);
+				RetireMaterial(material, true);
+				if (s_copyLogs.fetch_add(1) < 20) logger::info("engine: {} gave the shape its own copy {} of the material {} that {} references share", a_file, fmt::ptr(copy), fmt::ptr(material), references);
+				material = copy;
+			}
+			auto*& own = *reinterpret_cast<RE::BSTextureSet**>(material + 0x78);
+			loaded->IncRefCount();
+			auto* previous = own;
+			own = loaded;
+			if (previous) previous->DecRefCount();
+			// The material's ClearTextures (virtual 0x0A) drops the loaded textures; the property's LoadTextureSet loads the new set.
+			using ClearTexturesFn = void (*)(void*);
+			reinterpret_cast<ClearTexturesFn>((*reinterpret_cast<std::uintptr_t**>(material))[0x0A])(material);
+			using LoadTextureSetFn = void (*)(void*, std::uint32_t);
+			reinterpret_cast<LoadTextureSetFn>(REL::Module::get().base() + s_functions->lightingLoadTextureSet)(shader, 0);
+			if (s_textureSetLogs.fetch_add(1) < 60) logger::info("engine: {} replaced the shape's own textures {} with {}", a_file, held ? held : "", wanted ? wanted : "");
+		}
 	}
 
 	bool ApplyMaterial(RE::NiAVObject* a_geometry, const std::string& a_materialFile, int a_invalidate)
@@ -474,6 +552,7 @@ namespace ADT::Engine
 		bool ok = false;
 		if (status == 0) {
 			applyMaterialData(shaderData, a_geometry, false);
+			TakeTextureSet(a_geometry, shaderData, file);
 			ok = true;
 		} else {
 			logger::warn("engine: LoadMaterialFile('{}') returned {}", a_materialFile, status);

@@ -8,7 +8,7 @@ and 20% the third's. Set them lower and some paintings stay vanilla.
 Covers paintings, posters, signs, magazines, quest pictures, props and set dressing, the Pip-Boy screen and
 skin, the Pip-Boy world map, magazine covers on loading screens, and the main menu background and music.
 
-Works with Fallout 4 1.10.163 (old-gen), 1.10.984 (next-gen), 1.11.169 and 1.11.240 with the same files,
+Works with every version of Fallout 4 from 1.10.163 to current with the same files (untested on VR),
 under Mod Organizer 2 or Vortex.
 
 
@@ -90,7 +90,9 @@ pack's name keep that name; everything else returns to vanilla.
 
 TROUBLESHOOTING
 ---------------
-  - With ALR (Automated Loading Screen Replacer) installed, the loading screens are left to ALR.
+  - While ALR.esp (Automated Loading Screen Replacer) is active, the loading screens are left to ALR: the
+    Loading screens sliders have no effect and magazine cover packs do not appear on the loading screen
+    magazine. Everything else works as usual.
   - Files missing or damaged: the game names them at startup. Open the converter: under Mod Organizer 2 it
     restores them; otherwise reinstall Art Distribution Tool.
   - Log file: Documents\My Games\Fallout4\F4SE\ArtDistributionTool.log

@@ -112,7 +112,4 @@ $entries = Get-ChildItem $data -Recurse -File | Sort-Object FullName | ForEach-O
 
 Write-Zip $core (Join-Path $dist "ArtDistributionTool-$Version.zip")
 
-# Standalone converter
-Write-Zip $conv (Join-Path $dist "ArtDistributionToolConverter-$Version.zip")
-
 Get-ChildItem $dist -Filter "*.zip" | ForEach-Object { "{0}  {1:N0} bytes" -f $_.Name, $_.Length }

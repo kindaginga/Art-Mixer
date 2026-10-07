@@ -568,7 +568,8 @@ namespace ADT::AutoTest
 			Engine::ForEachGeometry(root, [&](RE::NiAVObject* a_geometry, int) {
 				auto name = Engine::ShaderPropertyName(a_geometry);
 				if (name.empty()) name = Engine::InlineKey(a_geometry);
-				if (!name.empty()) shown += (shown.empty() ? "" : ", ") + name;
+				// The diffuse texture the shape's material holds, next to the material name.
+				if (!name.empty()) shown += (shown.empty() ? "" : ", ") + name + " [diffuse " + Engine::DiffuseName(a_geometry) + "]";
 			});
 			logger::info("autotest: placed {:08X} (base {:08X}) shows {}", ref->GetFormID(), base->GetFormID(), shown.empty() ? "no named geometry" : shown);
 		}
