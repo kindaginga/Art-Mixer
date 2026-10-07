@@ -4,12 +4,14 @@ param(
     [Parameter(Mandatory)] [string] $GameRoot,
     [string] $PluginLog = "ArtDistributionTool.log",
     [int] $TimeoutSeconds = 300,
-    [int] $CaptureEverySeconds = 0
+    [int] $CaptureEverySeconds = 0,
+    [switch] $Direct
 )
-# Launches F4SE through MO2 for one instance via the Windows shell, waits for the game to exit, reports the harness results and exits 1 when the run failed.
+# Launches F4SE through MO2 for one instance via the Windows shell (or, with -Direct, f4se_loader.exe straight from the game folder, for a
+# Vortex or manual install deployed into Data), waits for the game to exit, reports the harness results and exits 1 when the run failed.
 $mo2 = "C:\Modding\MO2\ModOrganizer.exe"
 $docs = "$env:USERPROFILE\Documents\My Games\Fallout4\F4SE"
-$harnessIni = "$env:LOCALAPPDATA\ModOrganizer\$Instance\mods\Art Distribution Tool\F4SE\Plugins\ArtDistributionTool.ini"
+$harnessIni = if ($Direct) { "$GameRoot\Data\F4SE\Plugins\ArtDistributionTool.ini" } else { "$env:LOCALAPPDATA\ModOrganizer\$Instance\mods\Art Distribution Tool\F4SE\Plugins\ArtDistributionTool.ini" }
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 
@@ -32,6 +34,7 @@ function Get-Mo2Instance([string] $commandLine) {
 
 # Closes the test instance's MO2; any other MO2 (the player's own instances) is left alone and stops the run.
 function Close-TestMo2 {
+    if ($Direct) { return }
     foreach ($proc in Get-CimInstance Win32_Process -Filter "Name='ModOrganizer.exe'") {
         $owner = Get-Mo2Instance $proc.CommandLine
         if ($owner -ne $Instance) { throw "Mod Organizer is running for '$(if ($owner) { $owner } else { 'an unnamed instance' })' (process $($proc.ProcessId)); close it before a test run" }
@@ -73,7 +76,7 @@ Close-TestMo2
 if (Get-Process Fallout4 -ErrorAction SilentlyContinue) { throw "a Fallout4.exe is already running" }
 
 # The game saves its window position on exit; a minimized exit stores -32000,-32000, which lands the next window on a secondary monitor.
-$custom = "$env:LOCALAPPDATA\ModOrganizer\$Instance\profiles\$Profile\Fallout4Custom.ini"
+$custom = if ($Direct) { "$env:USERPROFILE\Documents\My Games\Fallout4\Fallout4Custom.ini" } else { "$env:LOCALAPPDATA\ModOrganizer\$Instance\profiles\$Profile\Fallout4Custom.ini" }
 $addedAlwaysActive = $false
 $wasReadOnly = $false
 if (Test-Path $custom) {
@@ -93,6 +96,17 @@ if (Test-Path $custom) {
     }
     if ($fixed -ne $ini) { Set-Content $custom $fixed -Encoding ascii -NoNewline }
 }
+# A direct launch reads the shared Fallout4Prefs.ini, whose window size may belong to another setup; the run sizes the window to the
+# primary monitor and puts the original lines back at the end.
+$prefs = "$env:USERPROFILE\Documents\My Games\Fallout4\Fallout4Prefs.ini"
+$prefsOriginal = $null
+if ($Direct -and (Test-Path $prefs)) {
+    $prefsOriginal = Get-Content $prefs -Raw
+    $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    $sized = [regex]::Replace($prefsOriginal, "(?m)^iSize W=[^\r\n]*", "iSize W=$($screen.Width)")
+    $sized = [regex]::Replace($sized, "(?m)^iSize H=[^\r\n]*", "iSize H=$($screen.Height)")
+    if ($sized -ne $prefsOriginal) { Set-Content $prefs $sized -Encoding ascii -NoNewline; "window sized to the primary monitor, $($screen.Width)x$($screen.Height), for this run" }
+}
 
 try {
     $before = @(Get-ChildItem $GameRoot -Filter "ScreenShot*.png" -ErrorAction SilentlyContinue | ForEach-Object Name)
@@ -100,7 +114,8 @@ try {
     Get-ChildItem $GameRoot -Filter "adt-capture-*.png" -ErrorAction SilentlyContinue | Remove-Item -Force
 
     $cmd = Join-Path $PSScriptRoot "launch.cmd"
-    @("@echo off", "cd /d C:\Modding\MO2", "start `"`" `"$mo2`" -i `"$Instance`" -p $Profile run -e F4SE") | Set-Content $cmd -Encoding ascii
+    $launch = if ($Direct) { @("@echo off", "cd /d `"$GameRoot`"", "start `"`" `"$GameRoot\f4se_loader.exe`"") } else { @("@echo off", "cd /d C:\Modding\MO2", "start `"`" `"$mo2`" -i `"$Instance`" -p $Profile run -e F4SE") }
+    $launch | Set-Content $cmd -Encoding ascii
     $runStart = Get-Date
     $sw = [Diagnostics.Stopwatch]::StartNew()
     Start-Process -FilePath "$env:WINDIR\explorer.exe" -ArgumentList "`"$cmd`"" | Out-Null
@@ -109,7 +124,7 @@ try {
     if (-not $game) {
         try { Close-TestMo2 } catch { $_.Exception.Message }
         "game did not start within 90 s"
-        Get-Content "$env:LOCALAPPDATA\ModOrganizer\$Instance\logs\mo_interface.log" -Tail 12 | ForEach-Object { $_.Substring(0, [Math]::Min(200, $_.Length)) }
+        if (-not $Direct) { Get-Content "$env:LOCALAPPDATA\ModOrganizer\$Instance\logs\mo_interface.log" -Tail 12 | ForEach-Object { $_.Substring(0, [Math]::Min(200, $_.Length)) } }
         "verdict: FAIL: the game did not start"
         exit 1
     }
@@ -220,4 +235,5 @@ try {
         if ($fixed -ne $ini) { Set-Content $custom $fixed -Encoding ascii -NoNewline }
         if ($wasReadOnly) { (Get-Item $custom).IsReadOnly = $true }
     }
+    if ($prefsOriginal -ne $null) { Set-Content $prefs $prefsOriginal -Encoding ascii -NoNewline }
 }

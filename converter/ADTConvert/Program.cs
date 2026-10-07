@@ -118,6 +118,7 @@ public static class Program
         }
         string Place(string? folder) => folder == null ? "none" : Directory.Exists(folder) ? folder : folder + " (not found)";
         Console.WriteLine(destination.Label);
+        Console.WriteLine("  game folder: " + Place(destination.GameFolder));
         Console.WriteLine("  mod folders: " + Place(destination.ModsFolder));
         if (destination.ProfileFolder != null) Console.WriteLine("  profile:     " + Place(destination.ProfileFolder));
         var scan = InstalledMods.Find(destination, new Report { Sink = Console.WriteLine });

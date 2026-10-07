@@ -420,10 +420,11 @@ public sealed class Writer
 
         if (packs.Any(p => p.Video != null))
         {
-            // Copies the game's loose menu video unless it is a converted mod's copy.
+            // Copies the game's loose menu video unless it is a converted mod's copy; a mod Vortex deployed over it leaves the game's own as MainMenuLoop.bk2.vortex_backup.
             var gameVideo = Path.Combine(_game.DataFolder, "Video", "MainMenuLoop.bk2");
-            var video = File.Exists(gameVideo) ? File.ReadAllBytes(gameVideo) : null;
-            if (video != null && !packs.Where(p => p.Video != null).Any(p => File.ReadAllBytes(Path.Combine(_out, "Video", p.Video!)).AsSpan().SequenceEqual(video)))
+            var copies = packs.Where(p => p.Video != null).Select(p => File.ReadAllBytes(Path.Combine(_out, "Video", p.Video!))).ToList();
+            var video = new[] { gameVideo, gameVideo + ".vortex_backup" }.Where(File.Exists).Select(File.ReadAllBytes).FirstOrDefault(bytes => !copies.Any(copy => copy.AsSpan().SequenceEqual(bytes)));
+            if (video != null)
             {
                 pack.Video = "ADT\\Packs\\vanilla\\MainMenuLoop.bk2";
                 WriteFile(Path.Combine("Video", pack.Video), video);

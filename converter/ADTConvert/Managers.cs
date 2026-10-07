@@ -12,6 +12,7 @@ public sealed class Destination
     public string? ModsFolder { get; init; }             // MO2: the instance's mods folder; Vortex: its Fallout 4 staging folder
     public string? DownloadsFolder { get; init; }        // the manager's Fallout 4 downloads folder
     public string? ProfileFolder { get; init; }          // MO2: the instance's active profile
+    public IReadOnlyDictionary<string, bool>? ModStates { get; init; }  // Vortex: whether its Fallout 4 profile enables each mod, by mod id (the staging folder name)
     public override string ToString() => Label;
 }
 
@@ -87,56 +88,45 @@ public static class Managers
         {
             Label = "Vortex (zip into its Fallout 4 downloads, then install it there)",
             Kind = "vortex",
-            GameFolder = RegistryGameFolder(),
+            GameFolder = VortexGameFolder(vortexRoot) ?? RegistryGameFolder(),
             DownloadsFolder = downloads,
             ModsFolder = VortexStagingFolder(vortexRoot) ?? Path.Combine(vortexRoot, "fallout4", "mods"),
+            ModStates = VortexModStates(vortexRoot),
         };
     }
 
-    /// <summary>Vortex's Fallout 4 staging folder as its settings name it (the value of settings###mods###installPath###fallout4 in
-    /// its state.v2 database, newest file first, with {USERDATA} and {game} filled in), or null when it is not found as plain text.</summary>
-    private static string? VortexStagingFolder(string vortexRoot)
+    /// <summary>Whether Vortex's Fallout 4 profile (settings###profiles###lastActiveProfile###fallout4) enables each mod, by mod id:
+    /// persistent###profiles###(profile)###modState###(mod)###enabled. Null when Vortex has no Fallout 4 profile.</summary>
+    private static IReadOnlyDictionary<string, bool>? VortexModStates(string vortexRoot)
     {
         var state = Path.Combine(vortexRoot, "state.v2");
-        if (!Directory.Exists(state)) return null;
-        var key = System.Text.Encoding.UTF8.GetBytes("settings###mods###installPath###fallout4");
-        foreach (var file in new DirectoryInfo(state).EnumerateFiles().Where(f => f.Extension is ".ldb" or ".log").OrderByDescending(f => f.LastWriteTimeUtc))
+        var profile = LevelDb.ReadJsonString(state, "settings###profiles###lastActiveProfile###fallout4");
+        if (string.IsNullOrEmpty(profile)) return null;
+        var prefix = $"persistent###profiles###{profile}###modState###";
+        const string suffix = "###enabled";
+        var states = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, value) in LevelDb.ReadPrefix(state, prefix))
         {
-            byte[] data;
-            try
-            {
-                using var stream = new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                data = new byte[stream.Length];
-                stream.ReadExactly(data);
-            }
-            catch (IOException)
-            {
-                continue;
-            }
-            string? value = null;
-            for (var at = data.AsSpan().IndexOf(key); at >= 0;)
-            {
-                // The value is stored as a JSON string a few bytes after its key.
-                var start = at + key.Length;
-                var quote = Array.IndexOf(data, (byte)'"', start, Math.Min(8, data.Length - start));
-                if (quote >= 0)
-                {
-                    var end = quote + 1;
-                    while (end < data.Length && data[end] != '"') end += data[end] == '\\' ? 2 : 1;
-                    try
-                    {
-                        if (end < data.Length) value = System.Text.Json.JsonSerializer.Deserialize<string>(data.AsSpan(quote, end - quote + 1)) ?? value;
-                    }
-                    catch (System.Text.Json.JsonException)
-                    {
-                    }
-                }
-                var next = data.AsSpan(start).IndexOf(key);
-                at = next < 0 ? -1 : start + next;
-            }
-            if (!string.IsNullOrWhiteSpace(value)) return value.Replace("{USERDATA}", vortexRoot, StringComparison.OrdinalIgnoreCase).Replace("{game}", "fallout4", StringComparison.OrdinalIgnoreCase);
+            if (!key.EndsWith(suffix, StringComparison.Ordinal) || value == null) continue;
+            states[key[prefix.Length..^suffix.Length]] = Encoding.UTF8.GetString(value) == "true";
         }
-        return null;
+        return states;
+    }
+
+    /// <summary>Vortex's Fallout 4 game folder as its settings name it (settings###gameMode###discovered###fallout4###path, which a
+    /// location set by hand also lands in), or null when it is not set or Fallout4.exe is not there.</summary>
+    private static string? VortexGameFolder(string vortexRoot)
+    {
+        var path = LevelDb.ReadJsonString(Path.Combine(vortexRoot, "state.v2"), "settings###gameMode###discovered###fallout4###path");
+        return path != null && File.Exists(Path.Combine(path, "Fallout4.exe")) ? path.TrimEnd('\\') : null;
+    }
+
+    /// <summary>Vortex's Fallout 4 staging folder as its settings name it (settings###mods###installPath###fallout4, with {USERDATA}
+    /// and {game} filled in), or null when it is not set.</summary>
+    private static string? VortexStagingFolder(string vortexRoot)
+    {
+        var value = LevelDb.ReadJsonString(Path.Combine(vortexRoot, "state.v2"), "settings###mods###installPath###fallout4");
+        return string.IsNullOrWhiteSpace(value) ? null : value.Replace("{USERDATA}", vortexRoot, StringComparison.OrdinalIgnoreCase).Replace("{game}", "fallout4", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>The destination a folder holds: a Mod Organizer 2 instance (the folder with ModOrganizer.ini) or Vortex's data

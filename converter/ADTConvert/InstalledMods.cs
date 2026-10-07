@@ -6,7 +6,7 @@ public sealed class InstalledMod
     public required string Name { get; init; }
     /// <summary>The mod's folder, as the converter takes it for an input.</summary>
     public required string Location { get; init; }
-    /// <summary>Mod Organizer 2 mod folders: whether the active profile enables the mod. Null elsewhere.</summary>
+    /// <summary>Whether the manager's active profile enables the mod (Mod Organizer 2 mod list or Vortex mod state); null when the profile does not list it.</summary>
     public bool? Enabled { get; init; }
     /// <summary>What the converter reads in it, for example "412 textures, 37 materials, 2 models".</summary>
     public required string Summary { get; init; }
@@ -60,7 +60,7 @@ public static class InstalledMods
     /// Art Distribution Tool's own mods, by name.</summary>
     public static InstalledScan Find(Destination destination, Report report, Action<string>? progress = null)
     {
-        var profile = destination.Kind == "mo2" ? ReadModList(destination.ProfileFolder, report) : null;
+        var profile = destination.Kind == "mo2" ? ReadModList(destination.ProfileFolder, report) : destination.ModStates;
         var folders = List(destination.ModsFolder, Directory.EnumerateDirectories, report);
         var game = new GameNames(destination.GameFolder, report);
         var found = new List<InstalledMod>();

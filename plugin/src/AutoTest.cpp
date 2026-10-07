@@ -501,7 +501,9 @@ namespace ADT::AutoTest
 		std::set<std::uint32_t> bases;
 		for (std::size_t start = 0; start < s_place.size();) {
 			const auto comma = s_place.find(',', start);
-			bases.insert(static_cast<std::uint32_t>(std::strtoul(s_place.substr(start, comma == std::string::npos ? std::string::npos : comma - start).c_str(), nullptr, 16)));
+			const auto entry = s_place.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+			// Resolves a "plugin:local id" entry to its form id, as the placement does, and drops a "@distance" suffix.
+			bases.insert(static_cast<std::uint32_t>(std::strtoul(ResolvePlace(entry.substr(0, entry.find('@'))).c_str(), nullptr, 16)));
 			start = comma == std::string::npos ? s_place.size() : comma + 1;
 		}
 		auto* player = RE::PlayerCharacter::GetSingleton();
@@ -530,7 +532,9 @@ namespace ADT::AutoTest
 		std::set<std::uint32_t> bases;
 		for (std::size_t start = 0; start < s_place.size();) {
 			const auto comma = s_place.find(',', start);
-			bases.insert(static_cast<std::uint32_t>(std::strtoul(s_place.substr(start, comma == std::string::npos ? std::string::npos : comma - start).c_str(), nullptr, 16)));
+			const auto entry = s_place.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+			// Resolves a "plugin:local id" entry to its form id, as the placement does, and drops a "@distance" suffix.
+			bases.insert(static_cast<std::uint32_t>(std::strtoul(ResolvePlace(entry.substr(0, entry.find('@'))).c_str(), nullptr, 16)));
 			start = comma == std::string::npos ? s_place.size() : comma + 1;
 		}
 		auto* player = RE::PlayerCharacter::GetSingleton();

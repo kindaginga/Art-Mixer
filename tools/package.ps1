@@ -1,5 +1,5 @@
 param(
-    [string] $Version = "0.1.0",
+    [string] $Version = "1.0.0",
     [switch] $SkipBuild
 )
 # Builds every component and writes the two release archives into dist.
@@ -45,27 +45,47 @@ if (-not $SkipBuild) {
     Pop-Location
 }
 
-# Converter folder: the published exe with its vanilla catalog, the Read Me and the MaterialLib license.
+# Converter folder: the published exe with its vanilla catalog and the Read Me.
 $conv = Join-Path $stage "converter"
 Copy-Item (Join-Path $root "mod\Data\ADT\vanilla-slots.json") $conv
 Copy-Item (Join-Path $root "mod\Art Distribution Tool - Read Me.txt") $conv
-Copy-Item (Join-Path $root "converter\external\MaterialLib\LICENSE") (Join-Path $conv "LICENSE-MaterialLib.txt")
 Get-ChildItem $conv -Filter "*.pdb" | Remove-Item
 
-# Notices for the third-party code built into the plugin and the converter: MIT asks for its notice in every copy; fmt's license
-# exempts compiled code and Boost's exempts machine code.
+# Notices for the third-party code built into the plugin and the converter, all MIT: each component's copyright lines, then the
+# license text once. MIT asks for its notice in every copy; fmt's license exempts compiled code and Boost's exempts machine code.
 $utf8 = New-Object System.Text.UTF8Encoding($false)
 $share = Join-Path $root "plugin\build\vs2026\vcpkg_installed\x64-windows-static-md\share"
+$components = @(
+    @{ Name = "CommonLibF4"; In = "ArtDistributionTool.dll"; File = Join-Path $root "plugin\external\CommonLibF4RD\LICENSE" },
+    @{ Name = "nlohmann-json"; In = "ArtDistributionTool.dll"; File = Join-Path $share "nlohmann-json\copyright" },
+    @{ Name = "spdlog"; In = "ArtDistributionTool.dll"; File = Join-Path $share "spdlog\copyright" },
+    @{ Name = "rsm-mmio"; In = "ArtDistributionTool.dll"; File = Join-Path $share "rsm-mmio\copyright" },
+    @{ Name = "zydis"; In = "ArtDistributionTool.dll"; File = Join-Path $share "zydis\copyright" },
+    @{ Name = "zycore"; In = "ArtDistributionTool.dll"; File = Join-Path $share "zycore\copyright" },
+    @{ Name = "MaterialLib"; In = "Art Distribution Tool.exe"; File = Join-Path $root "converter\external\MaterialLib\LICENSE" }
+)
 $notices = New-Object System.Collections.Generic.List[string]
 $notices.Add("Third-party code in Art Distribution Tool")
-function Add-Notice([string] $Title, [string] $Text) {
-    $script:notices.Add(""); $script:notices.Add("=" * 72); $script:notices.Add($Title); $script:notices.Add("=" * 72); $script:notices.Add($Text.Trim())
+$notices.Add("")
+$notices.Add("Every component below is under the MIT License; its text follows the list.")
+foreach ($in in ($components | ForEach-Object { $_.In } | Select-Object -Unique)) {
+    $notices.Add("")
+    $notices.Add("In $in" + ":")
+    foreach ($component in $components | Where-Object { $_.In -eq $in }) {
+        $lines = [IO.File]::ReadAllLines($component.File, $utf8)
+        $holders = @($lines | Where-Object { $_ -match "^Copyright" } | ForEach-Object { $_.Trim() })
+        if ($holders.Count -eq 0) { throw "no copyright line in $($component.File)" }
+        $notices.Add(("  {0,-14} {1}" -f $component.Name, ($holders -join "; ")))
+    }
 }
-Add-Notice "CommonLibF4 (in ArtDistributionTool.dll)" ([IO.File]::ReadAllText((Join-Path $root "plugin\external\CommonLibF4RD\LICENSE")))
-foreach ($package in 'nlohmann-json', 'spdlog', 'rsm-mmio', 'zydis', 'zycore') {
-    Add-Notice "$package (in ArtDistributionTool.dll)" ([IO.File]::ReadAllText((Join-Path $share "$package\copyright")))
-}
-Add-Notice "MaterialLib (in the converter)" ([IO.File]::ReadAllText((Join-Path $root "converter\external\MaterialLib\LICENSE")))
+$mit = [IO.File]::ReadAllLines($components[0].File, $utf8)
+$permission = [Array]::IndexOf($mit, ($mit | Where-Object { $_ -like "Permission is hereby granted*" } | Select-Object -First 1))
+if ($permission -lt 0) { throw "no MIT permission notice in $($components[0].File)" }
+$notices.Add("")
+$notices.Add("MIT License")
+$notices.Add("")
+$notices.AddRange([string[]]($mit[$permission..($mit.Count - 1)] | ForEach-Object { $_.TrimEnd() }))
+while ($notices[$notices.Count - 1] -eq "") { $notices.RemoveAt($notices.Count - 1) }
 [IO.File]::WriteAllText((Join-Path $conv "THIRD-PARTY-NOTICES.txt"), (($notices -join "`r`n") + "`r`n"), $utf8)
 
 # Core mod (FOMOD), with the converter inside as a tool (Tools\ArtDistributionTool) so managers can launch it.
