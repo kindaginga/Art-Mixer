@@ -5,6 +5,7 @@
   "dependencies": [
     "boost-stl-interfaces",
     "fmt",
+    "libdeflate",
     "nlohmann-json",
     "rsm-mmio",
     "spdlog",

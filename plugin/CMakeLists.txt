@@ -20,6 +20,7 @@ endif ()
 find_package(fmt REQUIRED CONFIG)
 find_package(spdlog REQUIRED CONFIG)
 find_package(nlohmann_json REQUIRED CONFIG)
+find_package(libdeflate REQUIRED CONFIG)
 
 set(SOURCES
 	src/PCH.h
@@ -61,7 +62,7 @@ function(add_plugin target)
 	target_compile_definitions(${target} PRIVATE _UNICODE)
 	target_compile_features(${target} PRIVATE cxx_std_23)
 	target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/src)
-	target_link_libraries(${target} PRIVATE CommonLibF4::CommonLibF4 fmt::fmt spdlog::spdlog nlohmann_json::nlohmann_json bcrypt)
+	target_link_libraries(${target} PRIVATE CommonLibF4::CommonLibF4 fmt::fmt spdlog::spdlog nlohmann_json::nlohmann_json $<IF:$<TARGET_EXISTS:libdeflate::libdeflate_shared>,libdeflate::libdeflate_shared,libdeflate::libdeflate_static> bcrypt)
 	target_precompile_headers(${target} PRIVATE src/PCH.h)
 	if (MSVC)
 		target_compile_options(${target} PRIVATE

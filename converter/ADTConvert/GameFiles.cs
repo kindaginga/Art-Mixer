@@ -17,8 +17,13 @@ public sealed class GameFiles
     private HashSet<string> _skyTextures = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string>? _byName;
 
-    /// <summary>What the model index cache holds: the inline shaders and the sky shader textures of the game's models.</summary>
-    private sealed record ModelIndex(List<InlineUse> Shaders, List<string> Sky);
+    /// <summary>What the model index cache holds: the inline shaders and the sky shader textures of the game's models, and per
+    /// model (outside the precombined meshes) the material files and inline shader keys it draws with.</summary>
+    private sealed record ModelIndex(List<InlineUse> Shaders, List<string> Sky, Dictionary<string, ModelUse> Models);
+
+    /// <summary>The material files (relative to Materials) and inline shader keys (see <see cref="InlineUse"/>) one model draws with.</summary>
+    public sealed record ModelUse(List<string> Materials, List<string> Inline);
+    private Dictionary<string, ModelUse>? _models;
 
     /// <summary>A vanilla model that draws with an inline shader keyed by <c>Key</c>, and every texture that shader uses.</summary>
     public sealed record InlineUse(string Key, string Mesh, bool Effect, List<string> Textures);
@@ -101,6 +106,16 @@ public sealed class GameFiles
         return _inline!.TryGetValue(key, out var use) ? use : null;
     }
 
+    /// <summary>Every game model (relative to Meshes, outside the precombined meshes) with the materials and inline shaders it draws with.</summary>
+    public IReadOnlyDictionary<string, ModelUse> Models
+    {
+        get
+        {
+            EnsureInlineIndex();
+            return _models!;
+        }
+    }
+
     /// <summary>The vanilla inline shader with this key, read again from its model, or null.</summary>
     public InlineShader? InlineShader(string key)
     {
@@ -115,13 +130,14 @@ public sealed class GameFiles
         // The index depends only on the game's model archives, so it is kept between runs under the archives' sizes and dates.
         var identity = string.Join("|", _meshes.Select(a => { var f = new FileInfo(a.Path); return $"{f.Name}:{f.Length}:{f.LastWriteTimeUtc.Ticks}"; }));
         var cacheFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ArtDistributionTool");
-        var cache = Path.Combine(cacheFolder, $"model-index-v2-{Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(Encoding.UTF8.GetBytes(identity)))[..12]}.json");
+        var cache = Path.Combine(cacheFolder, $"model-index-v3-{Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(Encoding.UTF8.GetBytes(identity)))[..12]}.json");
         if (File.Exists(cache))
         {
             try
             {
-                var index = JsonSerializer.Deserialize<ModelIndex>(File.ReadAllBytes(cache)) ?? new ModelIndex([], []);
+                var index = JsonSerializer.Deserialize<ModelIndex>(File.ReadAllBytes(cache)) ?? new ModelIndex([], [], []);
                 _inline = index.Shaders.ToDictionary(r => r.Key, StringComparer.OrdinalIgnoreCase);
+                _models = new Dictionary<string, ModelUse>(index.Models ?? [], StringComparer.OrdinalIgnoreCase);
                 _skyTextures = new HashSet<string>(index.Sky, StringComparer.OrdinalIgnoreCase);
                 BuildInlineReverse();
                 _report.Info($"inline shader index: {Report.Count(_inline.Count, "shader", "shaders")} from the cache");
@@ -135,6 +151,7 @@ public sealed class GameFiles
         _report.Info("indexing the game's models for shaders without a material file (first run only)");
         var clock = System.Diagnostics.Stopwatch.StartNew();
         _inline = new Dictionary<string, InlineUse>(StringComparer.OrdinalIgnoreCase);
+        _models = new Dictionary<string, ModelUse>(StringComparer.OrdinalIgnoreCase);
         var models = 0;
         foreach (var archive in _meshes)
         {
@@ -142,7 +159,14 @@ public sealed class GameFiles
             {
                 models++;
                 var precombined = path.Contains("\\precombined\\", StringComparison.OrdinalIgnoreCase);
-                foreach (var shader in NifFile.InlineShaders(bytes))
+                var shaders = NifFile.InlineShaders(bytes);
+                if (!precombined)
+                {
+                    var materials = NifFile.References(bytes).Where(NifFile.NamesMaterialFile).Select(m => Paths.Normalize(m, "materials")).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                    var keys = shaders.Select(s => s.Key).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                    if (materials.Count > 0 || keys.Count > 0) _models[Paths.Normalize(path, "meshes")] = new ModelUse(materials, keys);
+                }
+                foreach (var shader in shaders)
                 {
                     // A standalone model is kept over a precombined copy of the same shader; its settings are the source ones.
                     if (_inline.TryGetValue(shader.Key, out var known) && (precombined || !known.Mesh.Contains("\\precombined\\", StringComparison.OrdinalIgnoreCase))) continue;
@@ -155,7 +179,7 @@ public sealed class GameFiles
         try
         {
             Directory.CreateDirectory(cacheFolder);
-            File.WriteAllBytes(cache, JsonSerializer.SerializeToUtf8Bytes(new ModelIndex(_inline.Values.ToList(), _skyTextures.Order(StringComparer.Ordinal).ToList())));
+            File.WriteAllBytes(cache, JsonSerializer.SerializeToUtf8Bytes(new ModelIndex(_inline.Values.ToList(), _skyTextures.Order(StringComparer.Ordinal).ToList(), _models)));
         }
         catch (Exception e)
         {

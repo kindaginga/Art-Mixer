@@ -9,6 +9,9 @@
 #include "Packs.h"
 #include "Settings.h"
 
+#include <limits>
+#include <unordered_set>
+
 namespace ADT::Distributor
 {
 	namespace
@@ -320,16 +323,112 @@ namespace ADT::Distributor
 		}
 	}
 
+	namespace
+	{
+		// References whose model the game loads with their picks in place; the pass after their 3D arrives leaves their art alone.
+		std::mutex s_loadedLock;
+		std::unordered_set<std::uint32_t> s_loadedWithPicks;
+		std::atomic<int> s_refSwapLogs{ 0 };
+		// Material swaps made for sets of picks, by their entries, shared by every reference with the same set.
+		std::mutex s_swapLock;
+		std::unordered_map<std::string, RE::BGSMaterialSwap*> s_madeSwaps;
+		std::atomic<int> s_madeSwapLogs{ 0 };
+		// The color remap index the game's own swap entries carry for none.
+		constexpr float kNoColorRemap = std::numeric_limits<float>::max();
+
+		using SwapEntries = std::map<std::string, std::pair<std::string, float>>;  // material -> the material shown and its color remap
+
+		// The material swap form with these entries (relative to Materials), made once per set of entries.
+		[[nodiscard]] RE::BGSMaterialSwap* SwapWith(const SwapEntries& a_entries)
+		{
+			std::string key;
+			for (const auto& [from, to] : a_entries) key += fmt::format("{}>{}>{}|", from, to.first, to.second);
+			std::scoped_lock lock(s_swapLock);
+			if (const auto it = s_madeSwaps.find(key); it != s_madeSwaps.end()) return it->second;
+			auto* factory = RE::ConcreteFormFactory<RE::BGSMaterialSwap>::GetFormFactory();
+			auto* swap = factory ? factory->Create() : nullptr;
+			if (swap) {
+				for (const auto& [from, to] : a_entries) swap->swapMap.insert({ RE::BSFixedString(from), RE::BGSMaterialSwap::Entry{ RE::BSFixedString(to.first), to.second } });
+			} else {
+				logger::error("distributor: no material swap could be made; objects keep their art until their 3D arrives");
+			}
+			if (swap && s_madeSwapLogs.fetch_add(1) < 20) logger::info("distributor: material swap {} made with {} entries", fmt::ptr(swap), a_entries.size());
+			s_madeSwaps.emplace(std::move(key), swap);
+			return swap;
+		}
+
+		// The swap that gives a model its picks for one identity: the entries of the object's own swaps (a later swap's entry
+		// replaces an earlier one's), plus each replaced material and named inline shader whose pick shows another material mapped
+		// to it (a magazine's back to its cover pack's back), or null when no pick changes anything.
+		[[nodiscard]] RE::BGSMaterialSwap* PickSwap(const std::string& a_identity, const Packs::ModelUse& a_use, std::initializer_list<const RE::BGSMaterialSwap*> a_owns)
+		{
+			const auto values = Settings::Get();
+			SwapEntries entries;
+			SwapMap swaps;
+			for (const auto* own : a_owns) {
+				if (!own) continue;
+				const auto form = Catalog::FormText(own);
+				for (const auto& [from, entry] : own->swapMap) {
+					const auto material = Catalog::NormalizeMaterialPath(from.c_str());
+					entries[material] = { entry.swapMaterial.c_str(), entry.colorRemappingIndex };
+					swaps[material] = { Catalog::NormalizeMaterialPath(entry.swapMaterial.c_str()), form };
+				}
+			}
+			bool changed = false;
+			const Packs::Pack* coverPack = nullptr;
+			std::vector<std::pair<std::string, const Catalog::Slot*>> backs;
+			const auto pick = [&](const std::string& a_from, const std::string& a_name) {
+				const auto slots = SlotsOf(a_name, swaps);
+				const auto* slot = slots.shown ? slots.shown : slots.scoped;
+				if (!slot) return;
+				if (slot->category == "magazinebacks") {
+					backs.emplace_back(a_from, slot);
+					return;
+				}
+				const Packs::Pack* shown = nullptr;
+				const auto wanted = ChooseFor(*slot, a_identity, values, slots.scoped, &shown);
+				if (slot->category == "magazines" && shown) coverPack = shown;
+				if (wanted.empty()) return;
+				const auto target = Catalog::NormalizeMaterialPath(wanted);
+				if (target == a_from) return;
+				const auto own = entries.find(a_from);
+				entries[a_from] = { target, own != entries.end() ? own->second.second : kNoColorRemap };
+				changed = true;
+			};
+			for (const auto& material : a_use.materials) pick(material, material);
+			for (const auto& [key, material] : a_use.inlineShaders) pick(material, "@" + key);
+			// Materials the object's own swaps replace pick by the material those swaps show.
+			for (const auto& [material, entry] : entries) {
+				if (std::find(a_use.materials.begin(), a_use.materials.end(), material) == a_use.materials.end()) pick(material, material);
+			}
+			for (const auto& [from, slot] : backs) {
+				const auto* image = coverPack && !coverPack->vanilla ? ExactImage(*coverPack, *slot, Hash(fmt::format("{}|{}|{}", a_identity, slot->material, values.seed))) : nullptr;
+				if (!image) continue;
+				entries[from] = { Catalog::NormalizeMaterialPath(image->material), kNoColorRemap };
+				changed = true;
+			}
+			return changed ? SwapWith(entries) : nullptr;
+		}
+
+		[[nodiscard]] bool LoadedWithPicks(std::uint32_t a_refFormID)
+		{
+			std::scoped_lock lock(s_loadedLock);
+			return s_loadedWithPicks.contains(a_refFormID);
+		}
+	}
+
 	Engine::ModelChoice ChooseModel(std::uint32_t a_refFormID, std::uint32_t a_baseFormID, const char* a_modelPath, bool a_inWorld)
 	{
 		if (!a_modelPath || Catalog::Count() == 0 || Packs::All().empty()) return {};
 		const auto path = Settings::RelativePath(a_modelPath, "meshes");
+		if (auto* probe = AutoTest::SwapProbe(a_baseFormID); probe) return { path, probe };
 		const auto* objectSlot = Catalog::FindForm(a_baseFormID);
 		const auto* vanilla = Packs::Vanilla();
 		const auto* game = objectSlot && vanilla ? ExactImage(*vanilla, *objectSlot, 0) : nullptr;
 		// The model file slot is the object's game model when a converted mod gives the object a model, the model it loads now otherwise.
 		const auto& file = game && !game->material.empty() && !objectSlot->model.empty() ? objectSlot->model : path;
-		const auto choice = ChooseObject(Inventory::IdentityOf(a_refFormID, a_baseFormID, a_inWorld), objectSlot, Catalog::Find("#" + file));
+		const auto identityForm = Inventory::IdentityOf(a_refFormID, a_baseFormID, a_inWorld);
+		const auto choice = ChooseObject(identityForm, objectSlot, Catalog::Find("#" + file));
 		// The first version with a model: the rolled pack's for the object, for its model file, then the vanilla pack's.
 		const Packs::Image* image = nullptr;
 		for (const auto* candidate : { choice.object, choice.file, choice.vanillaObject, choice.vanillaFile }) {
@@ -338,16 +437,55 @@ namespace ADT::Distributor
 				break;
 			}
 		}
-		if (!image) return {};
 		// A version that keeps the object's swap loads with the game's own swap.
-		auto swap = image->swap;
-		if (!swap && choice.vanillaObject) swap = choice.vanillaObject->swap;
-		return { image->material, swap };
+		std::optional<RE::BGSMaterialSwap*> swap;
+		if (image) {
+			swap = image->swap;
+			if (!swap && choice.vanillaObject) swap = choice.vanillaObject->swap;
+		}
+		// A pack's own model shows that pack's art as it is.
+		const bool vanillaModel = image == choice.vanillaObject || image == choice.vanillaFile;
+		if (image && !vanillaModel) return { image->material, swap };
+		// The game's model loads with the object's picks as a material swap, from its copy with named inline shaders when it has one.
+		const RE::BGSMaterialSwap* own = nullptr;
+		if (swap) {
+			own = *swap;
+		} else if (auto* base = RE::TESForm::GetFormByID(a_baseFormID); base) {
+			auto* model = RE::fallout_cast<RE::TESModel*>(base);
+			const auto* component = model ? model->GetAsModelMaterialSwap() : nullptr;
+			own = component ? component->swapForm : nullptr;
+		}
+		// The reference's own material swap, whose entries replace the object's.
+		const auto* ref = RE::TESForm::GetFormByID<RE::TESObjectREFR>(a_refFormID);
+		const auto* extra = ref && ref->extraList ? ref->extraList->GetByType<RE::ExtraMaterialSwap>() : nullptr;
+		const RE::BGSMaterialSwap* refOwn = extra ? extra->swap : nullptr;
+		// A model packs.json does not list still gets its picks when a swap of the object or the reference shows replaced art.
+		static const Packs::ModelUse s_none;
+		const auto* use = Packs::ModelFor(image ? file : path);
+		if (!use && ((own && !own->swapMap.empty()) || (refOwn && !refOwn->swapMap.empty()))) use = &s_none;
+		// Without the swap call hook a reference with a swap of its own keeps the pass after its 3D arrives, which reads that swap.
+		if (!use || (refOwn && !Engine::ReferenceSwapsFold())) return image ? Engine::ModelChoice{ image->material, swap } : Engine::ModelChoice{};
+		auto* made = PickSwap("ref:" + Catalog::ReferenceKey(identityForm), *use, { own, refOwn });
+		if (made && refOwn) Engine::NoteFoldedSwap(made, refOwn);
+		if (refOwn && made && s_refSwapLogs.fetch_add(1) < 40) {
+			std::string entries;
+			for (const auto& [from, entry] : made->swapMap) entries += fmt::format("; {} -> {}", from.c_str(), entry.swapMaterial.c_str());
+			logger::info("reference {:08X}: its own material swap {} joins the load-time picks, swap {:08X}{}", a_refFormID, Catalog::FormText(refOwn), made->GetFormID(), entries);
+		}
+		{
+			std::scoped_lock lock(s_loadedLock);
+			s_loadedWithPicks.insert(a_refFormID);
+		}
+		const auto& model = !use->copy.empty() ? use->copy : image ? image->material : path;
+		if (made) return { model, made };
+		if (model == path) return {};
+		return { model, swap };
 	}
 
 	void OnReference3D(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root)
 	{
 		++s_set3DCalls;
+		AutoTest::LogArrival(a_ref, a_root);
 		if (!Engine::Available() || Catalog::Count() == 0 || Packs::All().empty()) return;
 		// An object a pack can rename gets its name (or loses a pack name) on the game thread, whatever its 3D carries.
 		const bool inWorld = a_ref->GetParentCell() != nullptr;
@@ -356,6 +494,8 @@ namespace ADT::Distributor
 			const auto baseID = base->GetFormID();
 			F4SE::GetTaskInterface()->AddTask([refID, baseID, inWorld] { ApplyName(refID, baseID, inWorld); });
 		}
+		// A reference whose model loaded with its picks needs no pass over its art.
+		if (LoadedWithPicks(a_ref->GetFormID())) return;
 		// The material swaps of the object and of the reference: game material -> the material shown in its place and the swap.
 		SwapMap swaps;
 		const auto addSwaps = [&](const RE::BGSMaterialSwap* a_swap) {
@@ -385,7 +525,11 @@ namespace ADT::Distributor
 		const auto* object = a_ref->GetObjectReference();
 		const auto formID = Inventory::IdentityOf(a_ref->GetFormID(), object ? object->GetFormID() : 0, inWorld);
 		if (Engine::ModelTracing()) logger::info("distributor: 3D of {:08X} shows the pick of {:08X}", a_ref->GetFormID(), formID);
-		F4SE::GetTaskInterface()->AddTask([root, formID, swaps = std::move(swaps)] { ApplyToReference(formID, root.get(), swaps); });
+		F4SE::GetTaskInterface()->AddTask([root, formID, swaps = std::move(swaps)] {
+			const auto start = std::chrono::steady_clock::now();
+			ApplyToReference(formID, root.get(), swaps);
+			Engine::Perf::AddGameTask(start, std::chrono::steady_clock::now(), fmt::format("reference {:08X}", formID));
+		});
 	}
 
 	std::uint64_t LayoutHash(std::string_view a_key)
@@ -749,7 +893,11 @@ namespace ADT::Distributor
 		if (s_reapplyQueued.exchange(true)) return;
 		std::thread([] {
 			std::this_thread::sleep_for(std::chrono::milliseconds(300));
-			F4SE::GetTaskInterface()->AddTask([] { Reapply(); });
+			F4SE::GetTaskInterface()->AddTask([] {
+				const auto start = std::chrono::steady_clock::now();
+				Reapply();
+				Engine::Perf::AddGameTask(start, std::chrono::steady_clock::now(), "reapply");
+			});
 		}).detach();
 	}
 

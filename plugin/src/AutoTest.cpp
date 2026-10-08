@@ -26,6 +26,8 @@ namespace ADT::AutoTest
 		bool s_anyKey{ true };     // click once as the "press any button" step
 		std::string s_consoleAfterA;  // console command issued in game after stage A
 		std::string s_place;          // comma-separated base form ids placed in front of the player at stage A2 (two frames when empty)
+		std::string s_swapProbe;      // "base hex|material|replacement": a material swap the model hook gives that object
+		std::set<std::uint32_t> s_watch;  // form ids of game references whose art is logged on arrival and at stage A2
 		int s_placePitch{ 70 };       // camera pitch after the placement, in degrees down
 		bool s_nameCheck{ false };    // after the placement: log the names of the placed items, pick one up, log its inventory stacks
 		bool s_inventoryCheck{ false };  // after the placement: pick the placed items up and photograph the inventory 3D view with model logging
@@ -410,6 +412,19 @@ namespace ADT::AutoTest
 		return s_skipped.find("," + std::string(a_feature) + ",") != std::string::npos;
 	}
 
+	// Writes the running executable's code section, as the loaded game holds it, to Fallout4-<runtime>.text in the folder.
+	void DumpText(const std::string& a_folder)
+	{
+		const auto& module = REL::Module::get();
+		const auto text = module.segment(REL::Segment::text);
+		const auto path = std::filesystem::path(a_folder) / fmt::format("Fallout4-{}.text", module.version().string());
+		std::error_code error;
+		std::filesystem::create_directories(a_folder, error);
+		std::ofstream out(path, std::ios::binary);
+		out.write(text.pointer<const char>(), static_cast<std::streamsize>(text.size()));
+		logger::info("autotest: wrote the code section ({} bytes from offset {:X}) to {}: {}", text.size(), text.address() - module.base(), path.string(), out.good() ? "done" : "failed");
+	}
+
 	bool Configure()
 	{
 		const auto path = std::filesystem::path("Data") / "F4SE" / "Plugins" / "ArtDistributionTool.ini";
@@ -443,6 +458,15 @@ namespace ADT::AutoTest
 			if (key.find("bpickfirst") != std::string::npos) s_pickFirst = value == "1";
 			if (key.find("sconsoleaftera") != std::string::npos) s_consoleAfterA = value;
 			if (key.find("splace") != std::string::npos) s_place = value;
+			if (key.find("sswapprobe") != std::string::npos) s_swapProbe = value;
+			if (key.find("swatch") != std::string::npos) {
+				// "id,id,...": game references in hex whose art is logged on arrival and at stage A2.
+				for (std::size_t start = 0; start < value.size();) {
+					const auto comma = value.find(',', start);
+					s_watch.insert(static_cast<std::uint32_t>(std::strtoul(value.substr(start, comma == std::string::npos ? std::string::npos : comma - start).c_str(), nullptr, 16)));
+					start = comma == std::string::npos ? value.size() : comma + 1;
+				}
+			}
 			if (key.find("iplacepitch") != std::string::npos) s_placePitch = std::stoi(value);
 			if (key.find("bnamecheck") != std::string::npos) s_nameCheck = value == "1";
 			if (key.find("sloadcards") != std::string::npos) {
@@ -461,6 +485,7 @@ namespace ADT::AutoTest
 			if (key.find("banykey") != std::string::npos) s_anyKey = value == "1";
 			if (key.find("iidleseconds") != std::string::npos) s_idleSeconds = std::stoi(value);
 			if (key.find("iloads") != std::string::npos) s_loadCount = std::stoi(value);
+			if (key.find("sdumptext") != std::string::npos) DumpText(value);
 		}
 		if (s_enabled) {
 			MainMenu::SetSkipStartupVideos(skipVideos);
@@ -552,6 +577,62 @@ namespace ADT::AutoTest
 		}
 	}
 
+	// The material name and diffuse texture of every geometry under the root.
+	std::string Shown(RE::NiAVObject* a_root)
+	{
+		std::string shown;
+		Engine::ForEachGeometry(a_root, [&](RE::NiAVObject* a_geometry, int) {
+			auto name = Engine::ShaderPropertyName(a_geometry);
+			if (name.empty()) name = Engine::InlineKey(a_geometry);
+			if (!name.empty()) shown += (shown.empty() ? "" : ", ") + name + " [diffuse " + Engine::DiffuseName(a_geometry) + "]";
+		});
+		return shown;
+	}
+
+	RE::BGSMaterialSwap* SwapProbe(std::uint32_t a_baseFormID)
+	{
+		static std::mutex lock;
+		static RE::BGSMaterialSwap* swap = nullptr;
+		static std::uint32_t base = 0;
+		static bool made = false;
+		std::scoped_lock guard(lock);
+		if (!made) {
+			made = true;
+			const auto first = s_swapProbe.find('|');
+			const auto second = first == std::string::npos ? std::string::npos : s_swapProbe.find('|', first + 1);
+			if (second == std::string::npos) return nullptr;
+			base = static_cast<std::uint32_t>(std::stoul(s_swapProbe.substr(0, first), nullptr, 16));
+			auto* factory = RE::ConcreteFormFactory<RE::BGSMaterialSwap>::GetFormFactory();
+			swap = factory ? factory->Create() : nullptr;
+			if (!swap) {
+				logger::error("autotest: swap probe could not create a material swap form");
+				return nullptr;
+			}
+			swap->swapMap.insert({ RE::BSFixedString(s_swapProbe.substr(first + 1, second - first - 1)), RE::BGSMaterialSwap::Entry{ RE::BSFixedString(s_swapProbe.substr(second + 1)), 0.0F } });
+			logger::info("autotest: swap probe made swap {} for base {:08X}: {} -> {}", fmt::ptr(swap), base, s_swapProbe.substr(first + 1, second - first - 1), s_swapProbe.substr(second + 1));
+			// The color remapping index existing swaps carry, for comparison with the probe's 0.
+			if (auto* data = RE::TESDataHandler::GetSingleton(); data) {
+				int logged = 0;
+				for (auto* existing : data->GetFormArray<RE::BGSMaterialSwap>()) {
+					for (const auto& [from, entry] : existing->swapMap) {
+						if (logged++ >= 8) break;
+						logger::info("autotest: swap {:08X}: {} -> {} color remapping index {}", existing->GetFormID(), from.c_str(), entry.swapMaterial.c_str(), entry.colorRemappingIndex);
+					}
+					if (logged >= 8) break;
+				}
+			}
+		}
+		return a_baseFormID == base ? swap : nullptr;
+	}
+
+	void LogArrival(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root)
+	{
+		const auto* base = a_ref ? a_ref->GetObjectReference() : nullptr;
+		if (!base || !a_root || ((a_ref->GetFormID() >> 24) != 0xFF && !s_watch.contains(a_ref->GetFormID()))) return;
+		const auto shown = Shown(a_root);
+		logger::info("autotest: arrived {:08X} (base {:08X}) shows {}", a_ref->GetFormID(), base->GetFormID(), shown.empty() ? "no named geometry" : shown);
+	}
+
 	// Logs the materials every geometry of each placed reference shows, so a run can tell which pack's version each placed object took.
 	void LogPlacedMaterials()
 	{
@@ -564,14 +645,20 @@ namespace ADT::AutoTest
 			auto* base = ref->GetObjectReference();
 			auto* root = ref->Get3D();
 			if (!base || !root) continue;
-			std::string shown;
-			Engine::ForEachGeometry(root, [&](RE::NiAVObject* a_geometry, int) {
-				auto name = Engine::ShaderPropertyName(a_geometry);
-				if (name.empty()) name = Engine::InlineKey(a_geometry);
-				// The diffuse texture the shape's material holds, next to the material name.
-				if (!name.empty()) shown += (shown.empty() ? "" : ", ") + name + " [diffuse " + Engine::DiffuseName(a_geometry) + "]";
-			});
+			const auto shown = Shown(root);
 			logger::info("autotest: placed {:08X} (base {:08X}) shows {}", ref->GetFormID(), base->GetFormID(), shown.empty() ? "no named geometry" : shown);
+		}
+		for (const auto id : s_watch) {
+			auto* ref = RE::TESForm::GetFormByID<RE::TESObjectREFR>(id);
+			auto* base = ref ? ref->GetObjectReference() : nullptr;
+			auto* root = ref ? ref->Get3D() : nullptr;
+			if (!base || !root) {
+				const auto* parent = ref ? ref->GetParentCell() : nullptr;
+				logger::info("autotest: watched {:08X} has no 3D: form {}, its cell {:08X}, the player's cell {:08X}, form flags {:08X}", id, ref ? "found" : "not found", parent ? parent->GetFormID() : 0, cell->GetFormID(), ref ? ref->formFlags : 0);
+				continue;
+			}
+			const auto shown = Shown(root);
+			logger::info("autotest: placed {:08X} (base {:08X}) shows {}", id, base->GetFormID(), shown.empty() ? "no named geometry" : shown);
 		}
 	}
 
@@ -855,6 +942,11 @@ namespace ADT::AutoTest
 					auto* ui = RE::UI::GetSingleton();
 					logger::info("autotest: after the console command: MainMenu open {}, at main menu {}", ui && ui->GetMenuOpen("MainMenu"), MainMenu::AtMainMenu());
 				});
+				if (!s_watch.empty()) {
+					// Logs the watched references 3 s after the command's load.
+					std::this_thread::sleep_for(std::chrono::seconds(3));
+					RunOnGameThread(LogPlacedMaterials);
+				}
 				Console("Screenshot");
 			}
 			// Third person with the camera detached and the player turned to face it shows the Pip-Boy on the left forearm.

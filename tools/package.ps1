@@ -62,6 +62,7 @@ $components = @(
     @{ Name = "rsm-mmio"; In = "ArtDistributionTool.dll"; File = Join-Path $share "rsm-mmio\copyright" },
     @{ Name = "zydis"; In = "ArtDistributionTool.dll"; File = Join-Path $share "zydis\copyright" },
     @{ Name = "zycore"; In = "ArtDistributionTool.dll"; File = Join-Path $share "zycore\copyright" },
+    @{ Name = "libdeflate"; In = "ArtDistributionTool.dll"; File = Join-Path $share "libdeflate\copyright" },
     @{ Name = "MaterialLib"; In = "Art Distribution Tool.exe"; File = Join-Path $root "converter\external\MaterialLib\LICENSE" }
 )
 $notices = New-Object System.Collections.Generic.List[string]

@@ -60,6 +60,16 @@ namespace ADT::Packs
 		std::unordered_map<std::string, ScreenCard> screens;  // loading screen ("file:local id", lowercase) -> its card
 	};
 
+	// A game model the plugin hands the game with an object's picks as a material swap: the copy that names its inline shaders as
+	// material files (empty when it has none), the replaced materials it draws with, and each named inline shader's key with the
+	// material file that stands for it in the copy (all relative to Materials or Meshes, lowercase).
+	struct ModelUse
+	{
+		std::string copy;
+		std::vector<std::string> materials;
+		std::vector<std::pair<std::string, std::string>> inlineShaders;
+	};
+
 	// Loads Data\ADT\packs.json written by the converter.
 	bool Load();
 	// Resolves the swap forms pack versions name and puts back game records a converted mod's plugin changed (game data loaded).
@@ -82,4 +92,6 @@ namespace ADT::Packs
 	[[nodiscard]] const std::vector<const Pack*>& SlotsFor(std::string_view a_category);
 	// The MCM section names of every share category in menu order.
 	[[nodiscard]] const std::vector<std::string>& Sections();
+	// The model a reference loads (relative to Meshes, any case and slash) as packs.json lists it, or null (any thread).
+	[[nodiscard]] const ModelUse* ModelFor(std::string_view a_model);
 }

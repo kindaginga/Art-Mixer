@@ -166,6 +166,71 @@ public static class NifFile
         return bytes;
     }
 
+    /// <summary>A copy of the file in which every inline shader whose key the map names gets that material file (relative to
+    /// Materials) as its name, so the game loads it as a material file; null when no shader is named or the file is not a Fallout 4 NIF.</summary>
+    public static byte[]? NameInlineShaders(byte[] data, Func<string, string?> map)
+    {
+        var blocks = Blocks(data, out var strings);
+        if (blocks == null) return null;
+        // The name field of each shader to name: a lighting shader's follows its shader type, an effect shader's comes first.
+        var named = new List<(int Field, string Name)>();
+        foreach (var block in blocks)
+        {
+            InlineShader? shader;
+            try
+            {
+                shader = block.Type switch
+                {
+                    "BSLightingShaderProperty" => Lighting(data, block.Offset, blocks, strings, null),
+                    "BSEffectShaderProperty" => Effect(data, block.Offset, strings, null),
+                    _ => null,
+                };
+            }
+            catch (Exception e) when (e is ArgumentOutOfRangeException or IndexOutOfRangeException)
+            {
+                continue;
+            }
+            if (shader == null || map(shader.Key) is not { Length: > 0 } name) continue;
+            named.Add((block.Offset + (shader.Effect ? 0 : 4), name));
+        }
+        if (named.Count == 0) return null;
+        // The string table gains the new names; the blocks after it move by the added bytes and keep their sizes.
+        var newline = Array.IndexOf(data, (byte)'\n');
+        var r = new Reader(data, newline + 1);
+        r.UInt(); r.Skip(1); r.UInt();
+        var numBlocks = (int)r.UInt();
+        r.UInt();
+        r.ExportString(); r.ExportString(); r.ExportString(); r.ExportString();
+        var numTypes = r.UShort();
+        for (var i = 0; i < numTypes; i++) r.SizedString();
+        r.Skip(2 * numBlocks + 4 * numBlocks);
+        var stringsStart = r.Position;
+        var numStrings = (int)r.UInt();
+        r.UInt();
+        for (var i = 0; i < numStrings; i++) r.SizedString();
+        var stringsEnd = r.Position;
+        var all = new List<string>(strings);
+        var index = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var (_, name) in named)
+        {
+            if (index.ContainsKey(name)) continue;
+            index[name] = all.Count;
+            all.Add(name);
+        }
+        var output = new MemoryStream();
+        var w = new BinaryWriter(output, Encoding.Latin1);
+        w.Write(data, 0, stringsStart);
+        w.Write((uint)all.Count);
+        w.Write((uint)all.Max(s => Encoding.Latin1.GetByteCount(s)));
+        foreach (var s in all) WriteSized(w, s);
+        var shift = (int)output.Position - stringsEnd;
+        w.Write(data, stringsEnd, data.Length - stringsEnd);
+        w.Flush();
+        var bytes = output.ToArray();
+        foreach (var (field, name) in named) BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(field + shift), index[name]);
+        return bytes;
+    }
+
     private static void WriteSized(BinaryWriter w, string text)
     {
         var bytes = Encoding.Latin1.GetBytes(text);
@@ -229,7 +294,7 @@ public static class NifFile
         return (r.UShort(), r.Byte());
     }
 
-    private static bool NamesMaterialFile(string? name)
+    public static bool NamesMaterialFile(string? name)
     {
         return name != null && (name.EndsWith(".bgsm", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".bgem", StringComparison.OrdinalIgnoreCase));
     }

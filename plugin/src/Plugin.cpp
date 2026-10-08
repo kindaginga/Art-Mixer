@@ -113,6 +113,7 @@ bool Plugin::Initialize(const F4SE::LoadInterface* a_f4se)
 		ADT::Engine::InstallHooks(&ADT::Distributor::OnModelLoaded);
 		ADT::Engine::InstallReferenceHook(&ADT::Distributor::OnReference3D);
 		ADT::Engine::InstallModelHook(&ADT::Distributor::ChooseModel);
+		ADT::Engine::InstallSwapApplyHook();
 		if (!ADT::AutoTest::Skips("textures")) ADT::Engine::InstallTextureHook(&ADT::Distributor::ChooseTexture);
 	}
 	if (!ADT::AutoTest::Skips("inventory")) ADT::Inventory::Install();

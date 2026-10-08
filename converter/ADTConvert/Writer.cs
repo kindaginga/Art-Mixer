@@ -71,6 +71,15 @@ public sealed class Writer
     // Game models (relative to Meshes, lowercase) the packs name under ADT\Game, with the game archive each is read from.
     private readonly SortedDictionary<string, string> _gameModels = new(StringComparer.Ordinal);
     private int _copiedModels;
+    // Game models (relative to Meshes, lowercase) the plugin hands the game with each object's picks, see WriteModelCopies.
+    private readonly SortedDictionary<string, ModelRow> _models = new(StringComparer.Ordinal);
+    // Inline shader key -> the material file with its vanilla look, written once.
+    private readonly Dictionary<string, string> _inlineRestores = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>One game model the plugin hands the game with an object's picks as a material swap: the copy that names its inline
+    /// shaders as material files (none when it has none to name), the replaced materials it draws with, and each named inline
+    /// shader's key with the material file that now stands for it.</summary>
+    public sealed record ModelRow(string? Copy, List<string> Materials, SortedDictionary<string, string> Inline);
 
     public Writer(string outputFolder, Catalog catalog, GameFiles game, Report report)
     {
@@ -311,6 +320,12 @@ public sealed class Writer
     /// <summary>Writes the vanilla look of an inline shader as a material file, which the plugin applies to put the vanilla look back.</summary>
     private string WriteInlineRestore(string key)
     {
+        if (_inlineRestores.TryGetValue(key, out var written)) return written;
+        return _inlineRestores[key] = WriteInlineRestoreFile(key);
+    }
+
+    private string WriteInlineRestoreFile(string key)
+    {
         var shader = _game.InlineShader(key);
         if (shader == null) return "";
         var material = shader.Build();
@@ -320,6 +335,45 @@ public sealed class Writer
         var relative = $"ADT\\Packs\\vanilla\\inline\\{stem}-{ShortHash(key)}{(material is BGEM ? ".bgem" : ".bgsm")}";
         WriteMaterial(Path.Combine("Materials", relative), material);
         return relative;
+    }
+
+    /// <summary>Lists every game model that draws with a material or inline shader some pack (the vanilla pack included) has a
+    /// version of, so the plugin can hand the game each object's picks as a material swap while the model loads. A model with such
+    /// inline shaders gets a copy (Meshes\ADT\Named\...) that names them as their vanilla-look material files, which makes
+    /// them swappable like any other material.</summary>
+    public void WriteModelCopies(List<PackOutput> packs)
+    {
+        var materials = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var inline = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var image in packs.SelectMany(p => p.Images))
+        {
+            if (image.Slot is not { Length: > 1 } slot) continue;
+            if (slot[0] == '@') inline.Add(slot[1..]);
+            else if (char.IsLetterOrDigit(slot[0])) materials.Add(slot);
+        }
+        var copies = 0;
+        foreach (var (model, use) in _game.Models)
+        {
+            var mats = use.Materials.Where(materials.Contains).ToList();
+            var keys = use.Inline.Where(inline.Contains).ToList();
+            if (mats.Count == 0 && keys.Count == 0) continue;
+            var named = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            foreach (var key in keys)
+            {
+                if (WriteInlineRestore(key) is { Length: > 0 } restore) named[key.ToLowerInvariant()] = restore;
+            }
+            string? copy = null;
+            if (named.Count > 0 && _game.ReadMesh(model) is { } data && NifFile.NameInlineShaders(data, k => named.GetValueOrDefault(k.ToLowerInvariant())) is { } bytes)
+            {
+                copy = $"ADT\\Named\\{model}";
+                WriteFile(Path.Combine("Meshes", copy), bytes);
+                copies++;
+            }
+            if (copy == null) named.Clear();
+            if (mats.Count == 0 && named.Count == 0) continue;
+            _models[model.ToLowerInvariant()] = new ModelRow(copy, mats.Select(m => m.ToLowerInvariant()).Order(StringComparer.Ordinal).ToList(), named);
+        }
+        _report.Info($"model swaps: {Report.Count(_models.Count, "game model", "game models")} draw with replaced art; {Report.Count(copies, "copy names", "copies name")} inline shaders as material files");
     }
 
     /// <summary>Writes the slot list the plugin reads: the catalogued vanilla art slots plus every other vanilla material a pack replaces.</summary>
@@ -918,6 +972,9 @@ public sealed class Writer
             categories,
             gameTextures = _gameTextures,
             gameModels = _gameModels,
+            models = _models.ToDictionary(m => m.Key, m => (object)(m.Value.Copy == null
+                ? new { materials = m.Value.Materials }
+                : new { copy = m.Value.Copy, materials = m.Value.Materials, inline = m.Value.Inline })),
             restores = restores.Distinct().Select(r => new { kind = r.Kind, form = r.Form, from = r.From, mod = r.Mod, game = r.Game, index = r.Index, gameColor = r.GameColor, modColor = r.ModColor }),
             packs = packs.Select(p => new
             {

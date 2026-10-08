@@ -15,6 +15,7 @@ namespace ADT::Packs
 		std::unordered_map<std::string, std::vector<std::string>> s_swapOwners;  // "form|material" -> the materials the game and converted mods show there
 		std::vector<std::string> s_sections;                                     // MCM section names of the share categories, in menu order
 		std::unordered_map<std::string, std::vector<const Pack*>> s_slots;       // category -> the packs its slots name, in slot order
+		std::unordered_map<std::string, ModelUse> s_models;                      // game model (relative to Meshes, lowercase) -> its use
 
 		[[nodiscard]] std::optional<float> Number(const nlohmann::json& a_row, const char* a_key)
 		{
@@ -42,6 +43,7 @@ namespace ADT::Packs
 		s_vanilla = nullptr;
 		s_signature.clear();
 		s_restores.clear();
+		s_models.clear();
 		s_sections.clear();
 		s_slots.clear();
 		const auto path = std::filesystem::path("Data") / "ADT" / "packs.json";
@@ -58,9 +60,24 @@ namespace ADT::Packs
 		std::string signature;
 		std::unordered_map<std::string, std::string> gameTextures;  // game texture (relative to Textures, lowercase) -> the archive it is read from
 		std::unordered_map<std::string, std::string> gameModels;    // game model (relative to Meshes, lowercase) -> the archive it is read from
+		std::unordered_map<std::string, ModelUse> models;
 		try {
 			const auto json = nlohmann::json::parse(file);
 			signature = Str(json, "signature");
+			for (const auto& [name, row] : json.value("models", nlohmann::json::object()).items()) {
+				if (!row.is_object()) continue;
+				ModelUse use;
+				use.copy = Settings::Lower(Str(row, "copy"));
+				for (const auto& material : row.value("materials", nlohmann::json::array())) {
+					if (material.is_string()) use.materials.push_back(Catalog::NormalizeMaterialPath(material.get<std::string>()));
+				}
+				for (const auto& [key, material] : row.value("inline", nlohmann::json::object()).items()) {
+					if (material.is_string()) use.inlineShaders.emplace_back(Settings::Lower(key), Catalog::NormalizeMaterialPath(material.get<std::string>()));
+				}
+				auto modelKey = Settings::Lower(name);
+				std::replace(modelKey.begin(), modelKey.end(), '/', '\\');
+				models.emplace(std::move(modelKey), std::move(use));
+			}
 			for (const auto* list : { "gameTextures", "gameModels" }) {
 				for (const auto& [name, archive] : json.value(list, nlohmann::json::object()).items()) {
 					if (!archive.is_string()) continue;
@@ -146,6 +163,8 @@ namespace ADT::Packs
 		s_packs = std::move(packs);
 		s_restores = std::move(restores);
 		s_signature = std::move(signature);
+		s_models = std::move(models);
+		logger::info("packs: {} game models drawn with replaced art get their picks while they load", s_models.size());
 		GameArchives::SetSources(gameTextures, gameModels);
 		for (std::size_t i = 0; i < sections.size(); ++i) {
 			auto& slots = s_slots[Settings::NormalizeCategory(sections[i])];
@@ -315,5 +334,12 @@ namespace ADT::Packs
 			}
 		}
 		return found;
+	}
+
+	const ModelUse* ModelFor(std::string_view a_model)
+	{
+		auto key = Settings::RelativePath(std::string(a_model).c_str(), "meshes");
+		const auto it = s_models.find(key);
+		return it == s_models.end() ? nullptr : &it->second;
 	}
 }

@@ -224,6 +224,7 @@ public static class Conversion
         packs.Add(writer.WriteVanillaPack(packs));
         writer.SplitMagazineBacks(packs);
         writer.WriteLoadCards(packs);
+        writer.WriteModelCopies(packs);
         writer.WritePacksJson(packs, restores, SlotsPerCategory, mods);
         writer.WriteMcm(packs, SlotsPerCategory);
         writer.WriteCatalog(CatalogPath);

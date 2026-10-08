@@ -2,6 +2,7 @@
 
 #include "Settings.h"
 
+#include <shared_mutex>
 #include <unordered_set>
 
 #define WIN32_LEAN_AND_MEAN
@@ -39,6 +40,58 @@ namespace ADT::Engine
 		}
 
 		std::optional<MaterialFunctions> s_functions;
+
+		// The game's function that applies a placed object's material swap to its loaded 3D (the reference's own swap, else
+		// the model's), and every call to it, as offsets from the executable's base.
+		struct SwapApplySites
+		{
+			std::size_t function;
+			std::vector<std::size_t> calls;
+		};
+
+		[[nodiscard]] std::optional<SwapApplySites> SwapApplySitesForRuntime(const REL::Version& a_version)
+		{
+			const auto v = a_version.string();
+			if (v == "1-10-163-0") return SwapApplySites{ 0x53080, { 0x3BE45, 0x3BE74, 0x3BEA4, 0x3E12E, 0x415D7, 0x41607, 0xE278A, 0x1BF689, 0x1C218D, 0x2E5A38, 0x2F34C9, 0x404006, 0xD9D47C } };
+			if (v == "1-10-984-0") return SwapApplySites{ 0x2014D0, { 0x1F35A3, 0x1F35E5, 0x1F3614, 0x2706F3, 0x305D9E, 0x3088A5, 0x3D60AC, 0x3E10EA, 0x4B7970, 0xC02895 } };
+			if (v == "1-11-169-0") return SwapApplySites{ 0x253170, { 0x2454B3, 0x2454F5, 0x245524, 0x2C1FB3, 0x35773E, 0x35A245, 0x42749C, 0x4324DA, 0x508E60, 0xC83DB5 } };
+			if (v == "1-11-240-0") return SwapApplySites{ 0x255EC0, { 0x248203, 0x248245, 0x248274, 0x2C4D03, 0x35A49E, 0x35CFA5, 0x42A1FC, 0x43523A, 0x50BBC0, 0xC88865 } };
+			return std::nullopt;
+		}
+
+		using ApplySwapFn = std::uintptr_t (*)(RE::NiAVObject*, RE::BGSModelMaterialSwap*, RE::BGSMaterialSwap*, void*, std::uintptr_t);
+		ApplySwapFn s_originalApplySwap{ nullptr };
+		std::shared_mutex s_foldedLock;
+		std::unordered_map<const RE::BGSMaterialSwap*, std::unordered_set<const RE::BGSMaterialSwap*>> s_folded;
+		std::atomic<std::size_t> s_foldedApplied{ 0 };
+		std::atomic<int> s_foldedLogs{ 0 };
+		std::atomic<bool> s_swapApplyHooked{ false };
+
+		// Applies the model's swap in place of the reference's own swap when the model's swap is one ADT made with that swap's entries in it.
+		std::uintptr_t HookedApplySwap(RE::NiAVObject* a_root, RE::BGSModelMaterialSwap* a_model, RE::BGSMaterialSwap* a_refSwap, void* a_arg4, std::uintptr_t a_arg5)
+		{
+			if (a_refSwap && a_model && a_model->swapForm) {
+				bool folded = false;
+				{
+					std::shared_lock lock(s_foldedLock);
+					const auto it = s_folded.find(a_model->swapForm);
+					folded = it != s_folded.end() && it->second.contains(a_refSwap);
+				}
+				if (folded) {
+					++s_foldedApplied;
+					if (s_foldedLogs.fetch_add(1) < 20) logger::info("engine: material swap {:08X} applied in place of the reference's own swap {:08X}, whose entries it carries", a_model->swapForm->GetFormID(), a_refSwap->GetFormID());
+					a_refSwap = nullptr;
+				}
+			}
+			return s_originalApplySwap(a_root, a_model, a_refSwap, a_arg4, a_arg5);
+		}
+
+		// Allocates the branch trampoline the hooks share, once.
+		void EnsureTrampoline()
+		{
+			static std::once_flag once;
+			std::call_once(once, [] { F4SE::AllocTrampoline(256); });
+		}
 		std::atomic<bool> s_tracing{ false };
 		std::atomic<bool> s_modelTracing{ false };
 		std::atomic<int> s_traceCount{ 0 };
@@ -89,6 +142,7 @@ namespace ADT::Engine
 			copy->numTexturesSRGB = 0;
 			copy->numMaterials = 0;
 			if (a_swap && swapComponent) static_cast<RE::BGSModelMaterialSwap*>(copy)->swapForm = *a_swap;
+			if (a_swap && *a_swap && !swapComponent) logger::warn("engine: model {} has no material swap component; the swap given for it is dropped", a_path);
 			s_modelCopies.emplace(key, copy);
 			return copy;
 		}
@@ -253,8 +307,110 @@ namespace ADT::Engine
 		}
 	}
 
+	namespace Perf
+	{
+		namespace
+		{
+			// One kind of cost within the current second.
+			struct Total
+			{
+				std::size_t count{ 0 };
+				double ms{ 0.0 };
+				double longest{ 0.0 };
+				std::string longestWhat;
+				std::size_t bytes{ 0 };
+			};
+			// The plugin's game-thread work within the current second, in play or behind a loading screen.
+			struct Frames
+			{
+				std::size_t tasks{ 0 };
+				double ms{ 0.0 };
+				double longestTask{ 0.0 };
+				std::string longestWhat;
+				double longestFrame{ 0.0 };
+			};
+			std::mutex s_lock;
+			std::array<Total, 3> s_totals{};
+			std::array<Frames, 2> s_frames{};  // 0 in play, 1 behind a loading screen
+			// The frame the last game-thread task ran in: when it ended, its cost so far and whether a loading screen was up.
+			std::chrono::steady_clock::time_point s_frameEnd{};
+			double s_frameMs{ 0.0 };
+			bool s_frameLoading{ false };
+			std::atomic<bool> s_started{ false };
+
+			// Counts the frame the last tasks ran in toward its second's longest frame (s_lock held).
+			void CloseFrame()
+			{
+				auto& frames = s_frames[s_frameLoading ? 1 : 0];
+				frames.longestFrame = std::max(frames.longestFrame, s_frameMs);
+				s_frameMs = 0.0;
+			}
+		}
+
+		void AddGameTask(std::chrono::steady_clock::time_point a_start, std::chrono::steady_clock::time_point a_end, std::string_view a_what)
+		{
+			const auto* ui = RE::UI::GetSingleton();
+			const bool loading = ui && ui->GetMenuOpen("LoadingMenu");
+			const double ms = std::chrono::duration<double, std::milli>(a_end - a_start).count();
+			std::scoped_lock lock(s_lock);
+			if (s_frameMs > 0.0 && (a_start - s_frameEnd > std::chrono::milliseconds(1) || loading != s_frameLoading)) CloseFrame();
+			s_frameMs += ms;
+			s_frameEnd = a_end;
+			s_frameLoading = loading;
+			auto& frames = s_frames[loading ? 1 : 0];
+			++frames.tasks;
+			frames.ms += ms;
+			if (ms > frames.longestTask) {
+				frames.longestTask = ms;
+				frames.longestWhat = a_what;
+			}
+		}
+
+		void Add(Kind a_kind, double a_ms, std::string_view a_what, std::size_t a_bytes)
+		{
+			std::scoped_lock lock(s_lock);
+			auto& total = s_totals[static_cast<std::size_t>(a_kind)];
+			++total.count;
+			total.ms += a_ms;
+			total.bytes += a_bytes;
+			if (a_ms > total.longest) {
+				total.longest = a_ms;
+				total.longestWhat = a_what;
+			}
+		}
+
+		void Start()
+		{
+			if (s_started.exchange(true)) return;
+			std::thread([] {
+				for (;;) {
+					std::this_thread::sleep_for(std::chrono::seconds(1));
+					std::array<Total, 3> totals{};
+					std::array<Frames, 2> frames{};
+					{
+						std::scoped_lock lock(s_lock);
+						if (s_frameMs > 0.0 && std::chrono::steady_clock::now() - s_frameEnd > std::chrono::milliseconds(1)) CloseFrame();
+						std::swap(totals, s_totals);
+						std::swap(frames, s_frames);
+					}
+					const auto& play = frames[0];
+					const auto& loading = frames[1];
+					const auto& sets = totals[0];
+					const auto& reads = totals[1];
+					const auto& hits = totals[2];
+					if (play.tasks == 0 && loading.tasks == 0 && reads.count == 0 && hits.count == 0) continue;
+					logger::info("perf: game thread {:.1f} ms in {} tasks, longest task {:.1f} ms ({}), longest frame {:.1f} ms; behind loading screens {:.1f} ms in {} tasks, longest task {:.1f} ms, longest frame {:.1f} ms; textures loaded on the spot {} in {:.1f} ms; archive reads {} files, {:.1f} MB in {:.1f} ms (longest {:.1f} ms, {}); from memory {} files, {:.1f} MB",
+						play.ms, play.tasks, play.longestTask, play.longestWhat.empty() ? "none" : play.longestWhat, play.longestFrame, loading.ms, loading.tasks, loading.longestTask, loading.longestFrame,
+						sets.count, sets.ms, reads.count, static_cast<double>(reads.bytes) / 1048576.0, reads.ms, reads.longest, reads.longestWhat.empty() ? "none" : reads.longestWhat, hits.count,
+						static_cast<double>(hits.bytes) / 1048576.0);
+				}
+			}).detach();
+		}
+	}
+
 	bool Initialize()
 	{
+		Perf::Start();
 		s_functions = FunctionsForRuntime(REL::Module::get().version());
 		if (!s_functions) {
 			logger::error("engine: runtime {} has no material function table; art distribution disabled", REL::Module::get().version().string());
@@ -513,7 +669,9 @@ namespace ADT::Engine
 			using ClearTexturesFn = void (*)(void*);
 			reinterpret_cast<ClearTexturesFn>((*reinterpret_cast<std::uintptr_t**>(material))[0x0A])(material);
 			using LoadTextureSetFn = void (*)(void*, std::uint32_t);
+			const auto start = std::chrono::steady_clock::now();
 			reinterpret_cast<LoadTextureSetFn>(REL::Module::get().base() + s_functions->lightingLoadTextureSet)(shader, 0);
+			Perf::Add(Perf::Kind::kTextureSet, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count(), wanted ? wanted : a_file);
 			if (s_textureSetLogs.fetch_add(1) < 60) logger::info("engine: {} replaced the shape's own textures {} with {}", a_file, held ? held : "", wanted ? wanted : "");
 		}
 	}
@@ -698,6 +856,50 @@ namespace ADT::Engine
 		return s_originalGetTESModel != nullptr;
 	}
 
+	void NoteFoldedSwap(const RE::BGSMaterialSwap* a_made, const RE::BGSMaterialSwap* a_source)
+	{
+		if (!a_made || !a_source) return;
+		std::unique_lock lock(s_foldedLock);
+		s_folded[a_made].insert(a_source);
+	}
+
+	std::size_t FoldedSwapsApplied()
+	{
+		return s_foldedApplied.load();
+	}
+
+	bool ReferenceSwapsFold()
+	{
+		return s_swapApplyHooked.load();
+	}
+
+	bool InstallSwapApplyHook()
+	{
+		const auto version = REL::Module::get().version();
+		const auto sites = SwapApplySitesForRuntime(version);
+		if (!sites) {
+			logger::error("engine: runtime {} has no table of the calls that apply a placed object's material swap; objects with a swap of their own show the game's art for it", version.string());
+			return false;
+		}
+		const auto base = REL::Module::get().base();
+		// Every call is checked to be a call to the function before any is changed.
+		for (const auto call : sites->calls) {
+			const auto* code = reinterpret_cast<const std::uint8_t*>(base + call);
+			const auto target = base + call + 5 + *reinterpret_cast<const std::int32_t*>(code + 1);
+			if (code[0] != 0xE8 || target != base + sites->function) {
+				logger::error("engine: {:X} is not a call to the swap function {:X}; objects with a swap of their own show the game's art for it", call, sites->function);
+				return false;
+			}
+		}
+		EnsureTrampoline();
+		auto& trampoline = F4SE::GetTrampoline();
+		for (const auto call : sites->calls) trampoline.write_call<5>(base + call, &HookedApplySwap);
+		s_originalApplySwap = reinterpret_cast<ApplySwapFn>(base + sites->function);
+		s_swapApplyHooked.store(true);
+		logger::info("engine: hooked the {} calls to the material swap function {:X}", sites->calls.size(), sites->function);
+		return true;
+	}
+
 	bool InstallTextureHook(TextureRedirector a_redirector)
 	{
 		const auto base = REL::Module::get().base();
@@ -720,7 +922,7 @@ namespace ADT::Engine
 			return false;
 		}
 		s_textureRedirector = a_redirector;
-		F4SE::AllocTrampoline(64);
+		EnsureTrampoline();
 		s_originalGetTexture = reinterpret_cast<GetTextureFn>(Detour(*loader, reinterpret_cast<void*>(&HookedGetTexture)));
 		if (!s_originalGetTexture) {
 			logger::error("engine: the texture loader at {:X} starts with code that cannot be moved; textures loaded by name stay the game's", *loader - base);

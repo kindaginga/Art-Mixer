@@ -21,6 +21,15 @@ namespace ADT::Engine
 	bool InstallReferenceHook(Reference3DCallback a_callback);
 	// Installs the TESObjectREFR::GetTESModel hook through which a reference loads a pack's replacement model.
 	bool InstallModelHook(ModelChooser a_chooser);
+	// Hooks the game's calls that apply a placed object's material swap to its 3D, so a swap ADT made from a reference's own
+	// swap is applied in place of that swap.
+	bool InstallSwapApplyHook();
+	// Records that the swap ADT made carries the entries of a_source, a reference's own swap.
+	void NoteFoldedSwap(const RE::BGSMaterialSwap* a_made, const RE::BGSMaterialSwap* a_source);
+	// The number of times a swap ADT made was applied in place of a reference's own swap.
+	[[nodiscard]] std::size_t FoldedSwapsApplied();
+	// True once the swap calls are hooked, so a reference's own swap can be folded into the swap ADT gives its model.
+	[[nodiscard]] bool ReferenceSwapsFold();
 	// The file (relative to the game folder, like the request) an interface movie request opens instead, or empty.
 	using MovieRedirector = std::string (*)(std::string_view a_url);
 	// Hooks the game's Scaleform file opener (BSScaleformFileOpener), through which every interface movie and its imports
@@ -63,4 +72,21 @@ namespace ADT::Engine
 	// Logs every reference model request and 3D load with its reference, base and cell (diagnostic, enabled by the autotest).
 	void SetModelTracing(bool a_enabled);
 	[[nodiscard]] bool ModelTracing();
+
+	// The plugin's own cost, summed per second and logged as one "perf:" line for each second it did any work (any thread).
+	namespace Perf
+	{
+		enum class Kind
+		{
+			kTextureSet,   // a shape's textures loaded on the spot (part of the game thread time)
+			kArchiveRead,  // a game file read and decompressed out of its archive
+			kCacheHit      // a game file served from memory instead
+		};
+		void Add(Kind a_kind, double a_ms, std::string_view a_what, std::size_t a_bytes = 0);
+		// One piece of plugin work run on the game thread: tasks that follow each other within 1 ms ran in the same frame and add
+		// up to that frame's cost; work while a loading screen is up is counted apart (game thread).
+		void AddGameTask(std::chrono::steady_clock::time_point a_start, std::chrono::steady_clock::time_point a_end, std::string_view a_what);
+		// Starts the once-a-second summary.
+		void Start();
+	}
 }
