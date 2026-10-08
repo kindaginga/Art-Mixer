@@ -1,5 +1,6 @@
 #include "Distributor.h"
 
+#include "ApplyNow.h"
 #include "AutoTest.h"
 
 #include "Catalog.h"
@@ -863,6 +864,11 @@ namespace ADT::Distributor
 		if (!AutoTest::Skips("pickmodels")) ApplyPickModels();
 		LoadScreens::Reassign();
 		const auto values = Settings::Get();
+		// Leaves the loaded objects as they are while a reload is under way.
+		if (ApplyNow::Reloading()) {
+			logger::info("distributor: reapplied the texture sets, world map, Pip-Boy models and loading screens; the reload under way gives the loaded objects their art");
+			return;
+		}
 		std::vector<Entry> work;
 		{
 			std::scoped_lock lock(s_mutex);

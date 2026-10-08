@@ -52,7 +52,7 @@ namespace ADT::Packs
 		std::string id;
 		std::string name;
 		bool vanilla{ false };
-		std::string page;   // the page its one slider sits on ("paintings", "posters", "signage", "magazines", "quest" or "other"), empty for none
+		std::string page;   // the page its one control sits on ("paintings", "posters", "signage", "magazines", "quest", "mixed" or "other"), empty for none
 		std::string video;  // main menu video relative to Video, empty when the pack has none
 		std::string music;  // main menu theme relative to Music, empty when the pack has none
 		std::map<std::string, std::vector<Image>> images;  // by category

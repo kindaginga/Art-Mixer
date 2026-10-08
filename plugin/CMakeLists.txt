@@ -8,6 +8,10 @@ endif ()
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Version.h.in ${CMAKE_CURRENT_BINARY_DIR}/include/Version.h @ONLY)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/version.rc.in ${CMAKE_CURRENT_BINARY_DIR}/version.rc @ONLY)
+# Stamps every build with the commit it comes from (BuildStamp.h), checked on each build.
+add_custom_target(BuildStamp
+	COMMAND ${CMAKE_COMMAND} -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/.. -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/include/BuildStamp.h -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/BuildStamp.cmake
+	BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/include/BuildStamp.h)
 
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_DEBUG OFF)
@@ -59,6 +63,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SOURCES})
 # Builds the plugin from the shared sources plus any extra ones.
 function(add_plugin target)
 	add_library(${target} SHARED ${SOURCES} ${ARGN} ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
+	add_dependencies(${target} BuildStamp)
 	target_compile_definitions(${target} PRIVATE _UNICODE)
 	target_compile_features(${target} PRIVATE cxx_std_23)
 	target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/src)

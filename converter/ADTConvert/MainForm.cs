@@ -23,7 +23,7 @@ public sealed class MainForm : Form
     public MainForm()
     {
         SuspendLayout();
-        Text = Program.Title;
+        Text = $"{Program.Title} {Program.Build}";
         // Shows the Art Distribution Tool icon in the title bar.
         using (var icon = typeof(MainForm).Assembly.GetManifestResourceStream("ADT.ico")) if (icon != null) Icon = new Icon(icon);
         // Every size below is in pixels at 96 DPI; the window scales them to the display it is on.

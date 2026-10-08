@@ -64,9 +64,11 @@ then copy the contents of the output folder into Fallout 4\Data, replacing files
 MENU
 ----
   Paintings, Posters, Signage, Magazines, Quest
-                   One slider per pack, on the page with most of its art: the percent of everything that
+                   One slider per pack whose art is all of that one kind: the percent of everything that
                    pack replaces that shows its art. Sliders never move each other. When packs replace the
                    same object, their percents share it; the rest is vanilla.
+  Mixed packs      One slider per pack with art of more than one kind, such as magazine covers and
+                   paintings, or props and signs. It sets all of that pack's art.
   Other replacers  One on/off switch per pack, for props and set dressing.
   Pip-Boy          Pick the screen background and the skin: Vanilla or one pack each.
   World map        Pick the Pip-Boy world map: Vanilla or one pack. A map drawn at a different size keeps

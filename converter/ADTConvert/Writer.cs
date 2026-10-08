@@ -785,15 +785,18 @@ public sealed class Writer
 
     // The share pages in menu order, their MCM section names and their page titles; the ADT_ prefix keeps Papyrus from
     // recasing the section names (its strings share one case-insensitive cache).
-    private static readonly string[] Categories = ["paintings", "posters", "signage", "magazines", "quest", "other", "pipboyscreen", "pipboyskin", "pipboymap", "loadingscreens"];
-    private static readonly string[] Titles = ["ADT_Paintings", "ADT_Posters", "ADT_Signage", "ADT_Magazines", "ADT_Quest", "ADT_Other", "ADT_PipBoyScreen", "ADT_PipBoySkin", "ADT_PipBoyMap", "ADT_LoadingScreens"];
-    private static readonly string[] PageTitles = ["Paintings", "Posters", "Signage", "Magazines", "Quest", "Other replacers", "Pip-Boy screen", "Pip-Boy skin", "World map", "Loading screens"];
+    private static readonly string[] Categories = ["paintings", "posters", "signage", "magazines", "quest", "mixed", "other", "pipboyscreen", "pipboyskin", "pipboymap", "loadingscreens"];
+    private static readonly string[] Titles = ["ADT_Paintings", "ADT_Posters", "ADT_Signage", "ADT_Magazines", "ADT_Quest", "ADT_Mixed", "ADT_Other", "ADT_PipBoyScreen", "ADT_PipBoySkin", "ADT_PipBoyMap", "ADT_LoadingScreens"];
+    private static readonly string[] PageTitles = ["Paintings", "Posters", "Signage", "Magazines", "Quest", "Mixed packs", "Other replacers", "Pip-Boy screen", "Pip-Boy skin", "World map", "Loading screens"];
 
     /// <summary>Locations with game files of their own: the folder their art sits in, the plugin their records come from and the page heading.</summary>
     private static readonly (string Folder, string Plugin, string Name)[] Locations = [("dlc03", "dlccoast.esm", "Far Harbor"), ("dlc04", "dlcnukaworld.esm", "Nuka-World")];
 
-    /// <summary>The pages a pack's one slider can sit on, in menu order.</summary>
+    /// <summary>The kinds of art a pack's one control sets, each with a page of its own, in menu order.</summary>
     private static readonly string[] ArtPages = ["paintings", "posters", "signage", "magazines", "quest", "other"];
+
+    /// <summary>The page a pack with art of more than one kind has its one slider on.</summary>
+    private const string MixedPage = "mixed";
 
     /// <summary>What a page's objects are called in a help line.</summary>
     private static readonly Dictionary<string, (string One, string Many)> Nouns = new(StringComparer.Ordinal)
@@ -805,18 +808,25 @@ public sealed class Writer
     /// <summary>How much of a pack's art a page holds.</summary>
     private static int OnPage(PackOutput pack, string page) => pack.CountIn(page);
 
-    /// <summary>The page a pack's one slider sits on: the page with the most of its art, the first in menu order on a tie; "" for a
-    /// pack with art on none. packs.json carries it, so the plugin reads the page and never works it out.</summary>
+    /// <summary>The kinds of art a pack holds, as the converter list groups them: each page's kind (a pack's own loading screens count
+    /// with its magazines), the Pip-Boy screen and skin, the world map and the main menu.</summary>
+    private static HashSet<string> Kinds(PackOutput pack)
+    {
+        var kinds = ArtPages.Where(page => OnPage(pack, page) > 0).ToHashSet(StringComparer.Ordinal);
+        if (pack.Covers("loadingscreens")) kinds.Add("magazines");
+        if (pack.Covers("pipboyscreen") || pack.Covers("pipboyskin")) kinds.Add("pipboy");
+        if (pack.Covers("pipboymap")) kinds.Add("pipboymap");
+        if (pack.Video != null || pack.Music != null) kinds.Add("mainmenu");
+        return kinds;
+    }
+
+    /// <summary>The page a pack's one control sits on: Mixed packs for a pack with more than one kind of art, otherwise the page of its
+    /// one kind; "" for a pack with art on no page. packs.json carries it, so the plugin reads the page and never works it out.</summary>
     public static string MainPage(PackOutput pack)
     {
-        var best = "";
-        var most = 0;
-        foreach (var page in ArtPages)
-        {
-            var n = OnPage(pack, page);
-            if (n > most) (best, most) = (page, n);
-        }
-        return best;
+        var page = ArtPages.FirstOrDefault(p => OnPage(pack, p) > 0);
+        if (page == null) return "";
+        return Kinds(pack).Count > 1 ? MixedPage : page;
     }
 
     /// <summary>What a pack's slider sets, its main page's objects first: "129 magazines, 4 paintings, 4 signs, 1 poster and 1 prop".</summary>
@@ -832,7 +842,7 @@ public sealed class Writer
     /// <summary>The packs a page or list shows, in slot order: a page lists the packs whose one control sits on it; loading screens
     /// every pack with magazine covers; the Pip-Boy lists every pack with something for them.</summary>
     private static List<PackOutput> Eligible(List<PackOutput> packs, string category) =>
-        packs.Where(p => p.Id != "vanilla" && (ArtPages.Contains(category)
+        packs.Where(p => p.Id != "vanilla" && (ArtPages.Contains(category) || category == MixedPage
             ? MainPage(p) == category
             : p.Covers(category) || (category == "loadingscreens" && p.Images.Any(i => i.IsCover)))).ToList();
 
@@ -938,10 +948,10 @@ public sealed class Writer
     /// <summary>A category's section name in packs.json and in the MCM settings.</summary>
     private static string SectionTitle(string category) => Titles[Array.IndexOf(Categories, category)];
 
-    /// <summary>Names how the MCM settings apply (one slider per pack on the page with most of its art, setting all of its art; one on/off
-    /// switch per pack on Other replacers; no Vanilla rows; keys named after the pack, iPack_ and bPack_); part of the signature, so a
-    /// conversion under another model resets the shares.</summary>
-    private const string SettingsModel = "settings-model-6";
+    /// <summary>Names how the MCM settings apply (one slider per pack on the page of its one kind of art, or on Mixed packs for art of
+    /// more than one kind, setting all of its art; one on/off switch per pack on Other replacers; no Vanilla rows; keys named after the
+    /// pack, iPack_ and bPack_); part of the signature, so a conversion under another model resets the shares.</summary>
+    private const string SettingsModel = "settings-model-7";
 
     /// <summary>The pack signature the MCM script compares with the stored one, resetting every share when they differ: each pack with
     /// its item count, and each share category's setting keys with the packs in slot order, so the signature changes exactly when
@@ -1004,8 +1014,9 @@ public sealed class Writer
         WriteFile(Path.Combine("ADT", "packs.json"), JsonSerializer.SerializeToUtf8Bytes(doc, new JsonSerializerOptions { WriteIndented = true }));
     }
 
-    /// <summary>Generates the MCM pages: one per art category, listing the packs whose one slider sits there (the page with most of
-    /// the pack's art), packs tied to one location under that location's heading; the Other replacers page (see OtherPage); and one
+    /// <summary>Generates the MCM pages: one per art category, listing the packs whose one slider sits there (packs with that one kind
+    /// of art), packs tied to one location under that location's heading; the Mixed packs page (packs with art of more than one kind);
+    /// the Other replacers page (see OtherPage); and one
     /// Pip-Boy page with a list for the screen background and one for the skin, and a World map page with a list for the world
     /// map (each Vanilla or a pack), stored as iPick.</summary>
     public void WriteMcm(List<PackOutput> packs, int slotsPerCategory)

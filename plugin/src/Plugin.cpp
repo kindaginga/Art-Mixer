@@ -1,5 +1,7 @@
 #include "Plugin.h"
 
+#include "BuildStamp.h"
+
 #include "ApplyNow.h"
 #include "AutoTest.h"
 #include "Catalog.h"
@@ -103,7 +105,7 @@ bool Plugin::Initialize(const F4SE::LoadInterface* a_f4se)
 	}
 	F4SE::Init(a_f4se);
 	const auto& module = REL::Module::get();
-	logger::info("{} v{} loaded on runtime {}", Version::PROJECT, Version::NAME, module.version().string());
+	logger::info("{} v{} (build {}) loaded on runtime {}", Version::PROJECT, Version::NAME, BuildStamp::COMMIT, module.version().string());
 
 	const bool engine = ADT::Engine::Initialize();
 	ADT::Catalog::Load();

@@ -10,7 +10,7 @@ public sealed class InstalledMod
     public bool? Enabled { get; init; }
     /// <summary>What the converter reads in it, for example "412 textures, 37 materials, 2 models".</summary>
     public required string Summary { get; init; }
-    /// <summary>The list group the mod is shown in: the kind of art it holds the most of (see <see cref="InstalledMods.Groups"/>).</summary>
+    /// <summary>The list group the mod is shown in: Mixed packs for more than one kind of art, otherwise the kind of art it holds the most of (see <see cref="InstalledMods.Groups"/>).</summary>
     public string Group { get; init; } = "";
     /// <summary>The Status column's text when it is not the enabled state: "converted" for a mod listed from the packs.</summary>
     public string? StatusText { get; init; }
@@ -24,9 +24,12 @@ public sealed record InstalledScan(List<InstalledMod> Mods, int ModFolders);
 /// <summary>Finds the art mods installed in a Mod Organizer 2 instance or Vortex, by file names only: loose files and BA2 name tables.</summary>
 public static class InstalledMods
 {
-    /// <summary>The converter list's groups in display order: each art category's group name, the main menu files, props and set dressing, and mods that are mostly not art last.</summary>
-    public static readonly string[] Groups = ["Paintings", "Posters", "Signage", "Magazines", "Quest", "Pip-Boy", "World map", "Main menu", PropsGroup, NotArtGroup];
+    /// <summary>The converter list's groups in display order: each art category's group name, mods with more than one kind of art,
+    /// the main menu files, props and set dressing, and mods that are mostly not art last.</summary>
+    public static readonly string[] Groups = ["Paintings", "Posters", "Signage", "Magazines", "Quest", MixedGroup, "Pip-Boy", "World map", "Main menu", PropsGroup, NotArtGroup];
     public const string PropsGroup = "Props and set dressing";
+    /// <summary>The group of a mod with more than one kind of art, as its one slider sits on the Mixed packs page.</summary>
+    public const string MixedGroup = "Mixed packs";
     /// <summary>The group of a mod most of whose changes to the game are not art, such as a graphics overhaul, an item sorter or a keyword framework.</summary>
     public const string NotArtGroup = "Mostly not art";
 
@@ -266,8 +269,10 @@ public static class InstalledMods
         // Game objects, material swaps and texture sets the mod's plugins carry their own version of.
         private int _records;
         /// <summary>Mostly not art when fewer than half of what the mod changes of the game (the textures, materials and models it replaces and the
-        /// records its plugins carry) is art; otherwise the group of the kind of art the mod holds the most of, the first in list order on a tie.</summary>
+        /// records its plugins carry) is art; Mixed packs when it holds more than one kind of art; otherwise the group of the kind of art the
+        /// mod holds the most of, the first in list order on a tie.</summary>
         public string Group => _replaced + _records > 0 && (_replacedArt + GameRecords) * 2 < _replaced + _records ? NotArtGroup
+            : _groups.Count > 1 ? MixedGroup
             : _groups.Count == 0 ? PropsGroup : Groups.Where(_groups.ContainsKey).OrderByDescending(g => _groups[g]).First();
         /// <summary>Game objects, material swaps and texture sets the mod's plugins change the look of.</summary>
         public int GameRecords { get; private set; }

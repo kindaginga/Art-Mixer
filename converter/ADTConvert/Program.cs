@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Runtime.InteropServices;
 
 namespace ADTConvert;
@@ -6,6 +7,8 @@ public static class Program
 {
     // The name the converter shows in its window, its error box and its help text.
     internal const string Title = "Art Distribution Tool";
+    /// <summary>The version and the commit the build comes from, "1.0.0+ae01711" ("-modified" when built from changed files).</summary>
+    internal static string Build => typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown build";
 
     // Without arguments the converter opens its window; with arguments it runs on the command line.
     private static readonly string LogPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ArtDistributionTool", "converter.log");
@@ -123,7 +126,7 @@ public static class Program
         if (destination.ProfileFolder != null) Console.WriteLine("  profile:     " + Place(destination.ProfileFolder));
         var scan = InstalledMods.Find(destination, new Report { Sink = Console.WriteLine });
         Console.WriteLine($"{Report.Count(scan.Mods.Count, "art mod", "art mods")} found in {Report.Count(scan.ModFolders, "installed mod", "installed mods")}:");
-        foreach (var mod in scan.Mods) Console.WriteLine($"  {mod.Name} | {(mod.Status.Length > 0 ? mod.Status : "installed")} | {mod.Summary} | {mod.Location}");
+        foreach (var mod in scan.Mods) Console.WriteLine($"  {mod.Name} | {mod.Group} | {(mod.Status.Length > 0 ? mod.Status : "installed")} | {mod.Summary} | {mod.Location}");
         return 0;
     }
 

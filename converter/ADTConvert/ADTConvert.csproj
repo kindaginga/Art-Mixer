@@ -23,6 +23,21 @@
     <EmbeddedResource Include="ADT.ico" LogicalName="ADT.ico" />
   </ItemGroup>
 
+  <!-- Stamps the build with the commit it comes from, marked "-modified" when tracked files differ from it: InformationalVersion 1.0.0+<commit>. -->
+  <Target Name="StampCommit" BeforeTargets="GetAssemblyVersion">
+    <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true" StandardOutputImportance="low" IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="AdtCommit" />
+    </Exec>
+    <Exec Command="git status --porcelain --untracked-files=no" ConsoleToMSBuild="true" StandardOutputImportance="low" IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="AdtChanges" />
+    </Exec>
+    <PropertyGroup>
+      <AdtCommit Condition="'$(AdtCommit)' == ''">unknown</AdtCommit>
+      <AdtCommit Condition="'$(AdtChanges)' != ''">$(AdtCommit)-modified</AdtCommit>
+      <InformationalVersion>$(Version)+$(AdtCommit)</InformationalVersion>
+    </PropertyGroup>
+  </Target>
+
   <ItemGroup>
   </ItemGroup>
 

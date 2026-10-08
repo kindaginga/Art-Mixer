@@ -1,5 +1,6 @@
 #include "ApplyNow.h"
 
+#include "Distributor.h"
 #include "Settings.h"
 
 #define WIN32_LEAN_AND_MEAN
@@ -89,6 +90,8 @@ namespace ADT::ApplyNow
 			auto expected = Stage::kSaving;
 			if (s_request.load() != a_request || !s_stage.compare_exchange_strong(expected, Stage::kIdle)) return;
 			logger::warn("apply all: {}; nothing is reloaded", a_why);
+			// Applies the settings to the objects already loaded.
+			Distributor::QueueReapply();
 			F4SE::GetTaskInterface()->AddTask([] {
 				if (auto* manager = RE::MessageMenuManager::GetSingleton(); manager) {
 					manager->Create("Art Distribution Tool",
@@ -179,6 +182,11 @@ namespace ADT::ApplyNow
 		auto expected = Stage::kSaving;
 		if (s_stage.compare_exchange_strong(expected, Stage::kIdle)) logger::info("apply all: another save is loading before {} was written; nothing is reloaded", kSaveName);
 		return s_reloading.exchange(false);
+	}
+
+	bool Reloading()
+	{
+		return s_stage.load() != Stage::kIdle;
 	}
 
 	void OnMainMenuReady()

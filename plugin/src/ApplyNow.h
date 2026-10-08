@@ -14,4 +14,6 @@ namespace ADT::ApplyNow
 	bool OnPreLoadGame();
 	// Loads the save once the main menu is up again (its loop video opened).
 	void OnMainMenuReady();
+	// True from a confirmed reload's save until its load starts or the reload is given up.
+	[[nodiscard]] bool Reloading();
 }
