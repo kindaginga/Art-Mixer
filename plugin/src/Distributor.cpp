@@ -13,7 +13,7 @@
 #include <limits>
 #include <unordered_set>
 
-namespace ADT::Distributor
+namespace ArtMixer::Distributor
 {
 	namespace
 	{
@@ -772,8 +772,8 @@ namespace ADT::Distributor
 			const auto slots = SlotsOf(name, a_swaps);
 			if (slots.material != name && s_swapLogs.fetch_add(1) < 20) logger::info("reference {:08X}: its material swap shows {} in place of {}{}", a_formID, slots.material, name, slots.scoped ? " (a slot of that swap entry)" : "");
 			const auto* slot = slots.shown ? slots.shown : slots.scoped;
-			// A pack material ("materials\adt\packs\...") or a pack texture under an inline shader ("@adt\packs\...").
-			const bool ours = lowered.find("adt\\packs\\") != std::string::npos;
+			// A pack material ("materials\artmixer\packs\...") or a pack texture under an inline shader ("@artmixer\packs\...").
+			const bool ours = lowered.find("artmixer\\packs\\") != std::string::npos;
 			if (!slot && !ours) return;
 			seen = true;
 			if (ours) {

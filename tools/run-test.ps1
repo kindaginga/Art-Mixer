@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory)] [string] $Instance,
     [string] $Profile = "Default",
     [Parameter(Mandatory)] [string] $GameRoot,
-    [string] $PluginLog = "ArtDistributionTool.log",
+    [string] $PluginLog = "ArtMixer.log",
     [int] $TimeoutSeconds = 300,
     [int] $CaptureEverySeconds = 0,
     [switch] $Direct
@@ -11,7 +11,7 @@ param(
 # Vortex or manual install deployed into Data), waits for the game to exit, reports the harness results and exits 1 when the run failed.
 $mo2 = "C:\Modding\MO2\ModOrganizer.exe"
 $docs = "$env:USERPROFILE\Documents\My Games\Fallout4\F4SE"
-$harnessIni = if ($Direct) { "$GameRoot\Data\F4SE\Plugins\ArtDistributionTool.ini" } else { "$env:LOCALAPPDATA\ModOrganizer\$Instance\mods\Art Distribution Tool\F4SE\Plugins\ArtDistributionTool.ini" }
+$harnessIni = if ($Direct) { "$GameRoot\Data\F4SE\Plugins\ArtMixer.ini" } else { "$env:LOCALAPPDATA\ModOrganizer\$Instance\mods\Art Mixer\F4SE\Plugins\ArtMixer.ini" }
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 
@@ -114,7 +114,7 @@ if ($Direct -and (Test-Path $prefs)) {
 try {
     $before = @(Get-ChildItem $GameRoot -Filter "ScreenShot*.png" -ErrorAction SilentlyContinue | ForEach-Object Name)
     $crashBefore = @(Get-ChildItem $docs -Filter "crash-*.log" -ErrorAction SilentlyContinue | ForEach-Object Name)
-    Get-ChildItem $GameRoot -Filter "adt-capture-*.png" -ErrorAction SilentlyContinue | Remove-Item -Force
+    Get-ChildItem $GameRoot -Filter "artmixer-capture-*.png" -ErrorAction SilentlyContinue | Remove-Item -Force
 
     $cmd = Join-Path $PSScriptRoot "launch.cmd"
     $launch = if ($Direct) { @("@echo off", "cd /d `"$GameRoot`"", "start `"`" `"$GameRoot\f4se_loader.exe`"") } else { @("@echo off", "cd /d C:\Modding\MO2", "start `"`" `"$mo2`" -i `"$Instance`" -p $Profile run -e F4SE") }
@@ -136,7 +136,7 @@ try {
     while ($sw.Elapsed.TotalSeconds -lt $TimeoutSeconds -and (Get-Process Fallout4 -ErrorAction SilentlyContinue)) {
         Start-Sleep -Seconds 3
         if ($CaptureEverySeconds -gt 0 -and $sw.Elapsed.TotalSeconds -ge $nextCapture) {
-            try { Capture-Desktop (Join-Path $GameRoot ("adt-capture-{0}.png" -f $captureIndex)) } catch {}
+            try { Capture-Desktop (Join-Path $GameRoot ("artmixer-capture-{0}.png" -f $captureIndex)) } catch {}
             $captureIndex++; $nextCapture += $CaptureEverySeconds
         }
     }
@@ -150,7 +150,7 @@ try {
     $newCrashes = @(Get-ChildItem $docs -Filter "crash-*.log" -ErrorAction SilentlyContinue | Where-Object { $crashBefore -notcontains $_.Name } | ForEach-Object FullName)
     "started after $([int]$started)s, ran $([int]($sw.Elapsed.TotalSeconds - $started))s, timedOut=$timedOut, mode $modeName"
     "new screenshots: " + ($newShots -join '; ')
-    "captures: " + ((Get-ChildItem $GameRoot -Filter "adt-capture-*.png" -ErrorAction SilentlyContinue | ForEach-Object FullName) -join '; ')
+    "captures: " + ((Get-ChildItem $GameRoot -Filter "artmixer-capture-*.png" -ErrorAction SilentlyContinue | ForEach-Object FullName) -join '; ')
     "new crash logs: " + ($newCrashes -join '; ')
     if ($timedOut) { $failures.Add("the game was still running after $TimeoutSeconds s, so the test did not finish") }
     if ($newCrashes.Count -gt 0) { $failures.Add("$($newCrashes.Count) new crash logs") }

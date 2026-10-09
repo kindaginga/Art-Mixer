@@ -7,11 +7,11 @@
 #include <Windows.h>
 #include <bcrypt.h>
 
-namespace ADT::CoreCheck
+namespace ArtMixer::CoreCheck
 {
 	namespace
 	{
-		constexpr auto kList = "ADT/core-files.json";
+		constexpr auto kList = "ArtMixer/core-files.json";
 
 		// Closes the message box; the button needs no action.
 		class Notice : public RE::IMessageBoxCallback
@@ -91,12 +91,12 @@ namespace ADT::CoreCheck
 		std::string names;
 		for (const auto& path : damaged) names += (names.empty() ? "" : ", ") + path;
 		logger::warn("own files: {} missing or changed: {}", damaged.size(), names);
-		std::string body = "These files of Art Distribution Tool are missing or changed:\n";
+		std::string body = "These files of Art Mixer are missing or changed:\n";
 		for (const auto& path : damaged) body += "\n" + path;
-		body += "\n\nOpen the converter (Tools\\ArtDistributionTool\\Art Distribution Tool.exe in the mod), which restores them where it can, or reinstall Art Distribution Tool with your mod manager.";
+		body += "\n\nOpen the converter (Tools\\ArtMixer\\Art Mixer.exe in the mod), which restores them where it can, or reinstall Art Mixer with your mod manager.";
 		F4SE::GetTaskInterface()->AddTask([body] {
 			if (auto* manager = RE::MessageMenuManager::GetSingleton(); manager) {
-				manager->Create("Art Distribution Tool", body.c_str(), new Notice(), RE::WARNING_TYPES::kDefault, "OK");
+				manager->Create("Art Mixer", body.c_str(), new Notice(), RE::WARNING_TYPES::kDefault, "OK");
 				logger::info("own files: message shown");
 			}
 		});

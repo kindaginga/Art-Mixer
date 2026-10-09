@@ -2,7 +2,7 @@
 
 #include "Settings.h"
 
-namespace ADT::Catalog
+namespace ArtMixer::Catalog
 {
 	namespace
 	{
@@ -37,7 +37,7 @@ namespace ADT::Catalog
 	bool Load()
 	{
 		s_slots.clear();
-		const auto path = std::filesystem::path("Data") / "ADT" / "vanilla-slots.json";
+		const auto path = std::filesystem::path("Data") / "ArtMixer" / "vanilla-slots.json";
 		std::ifstream file(path);
 		if (!file) {
 			logger::error("catalog: cannot open {}", path.string());

@@ -16,7 +16,7 @@
 #define NOMINMAX
 #include <Windows.h>
 
-namespace ADT::AutoTest
+namespace ArtMixer::AutoTest
 {
 	namespace
 	{
@@ -145,7 +145,7 @@ namespace ADT::AutoTest
 			});
 		}
 
-		// True once the Art Distribution Tool Apply all prompt is open, checked on the game thread for up to a_seconds.
+		// True once the Art Mixer Apply all prompt is open, checked on the game thread for up to a_seconds.
 		bool WaitForApplyPrompt(int a_seconds)
 		{
 			for (int i = 0; i < a_seconds * 5; ++i) {
@@ -201,23 +201,23 @@ namespace ADT::AutoTest
 		void LogApplyState(std::string_view a_stage)
 		{
 			const auto key = Settings::PackKey("paintings", 1);
-			const auto menu = IniValue(std::filesystem::path("Data") / "MCM" / "Settings" / "ArtDistributionTool.ini", "ADT_Paintings", key);
-			const auto applied = IniValue(std::filesystem::path("Data") / "F4SE" / "Plugins" / "ArtDistributionTool_Applied.ini", "ADT_paintings", key);
+			const auto menu = IniValue(std::filesystem::path("Data") / "MCM" / "Settings" / "ArtMixer.ini", "ArtMixer_Paintings", key);
+			const auto applied = IniValue(std::filesystem::path("Data") / "F4SE" / "Plugins" / "ArtMixer_Applied.ini", "ArtMixer_paintings", key);
 			logger::info("autotest: {}: paintings slot 1 in effect {}, menu file {}, applied file {}", a_stage, Settings::Percent("paintings", 1), menu, applied);
 		}
 
 		// Moves a slider the way MCM does: MCM stores the value, and nothing else happens until the changes are applied.
-		void MenuSliderChange(int a_value, int a_slot = 1, std::string_view a_section = "ADT_Paintings")
+		void MenuSliderChange(int a_value, int a_slot = 1, std::string_view a_section = "ArtMixer_Paintings")
 		{
 			const auto id = Settings::MenuKey(a_section, a_slot);
-			Console(fmt::format("cgf \"MCM.SetModSettingInt\" \"ArtDistributionTool\" \"{}\" {}", id, a_value));
+			Console(fmt::format("cgf \"MCM.SetModSettingInt\" \"ArtMixer\" \"{}\" {}", id, a_value));
 			std::this_thread::sleep_for(std::chrono::seconds(3));
 		}
 
 		// Logs the menu file's shares of two slots of one section and one slot of another against the expected values.
 		bool CheckShares(std::string_view a_step, std::string_view a_section, std::array<int, 2> a_slots, std::string_view a_otherSection, int a_other, std::array<int, 3> a_expected)
 		{
-			const auto path = std::filesystem::path("Data") / "MCM" / "Settings" / "ArtDistributionTool.ini";
+			const auto path = std::filesystem::path("Data") / "MCM" / "Settings" / "ArtMixer.ini";
 			// MCM leaves a key out of its file while it holds the default, 0 for a pack slot.
 			const auto read = [&](int a_slot, std::string_view a_category) {
 				const auto id = Settings::MenuKey(a_category, a_slot);
@@ -392,7 +392,7 @@ namespace ADT::AutoTest
 		static const auto s_skipped = [] {
 			std::string list;
 			bool enabled = false;
-			std::ifstream file(std::filesystem::path("Data") / "F4SE" / "Plugins" / "ArtDistributionTool.ini");
+			std::ifstream file(std::filesystem::path("Data") / "F4SE" / "Plugins" / "ArtMixer.ini");
 			std::string line;
 			bool inSection = false;
 			while (std::getline(file, line)) {
@@ -430,7 +430,7 @@ namespace ADT::AutoTest
 
 	bool Configure()
 	{
-		const auto path = std::filesystem::path("Data") / "F4SE" / "Plugins" / "ArtDistributionTool.ini";
+		const auto path = std::filesystem::path("Data") / "F4SE" / "Plugins" / "ArtMixer.ini";
 		std::ifstream file(path);
 		if (!file) return false;
 		std::string line;
@@ -825,7 +825,7 @@ namespace ADT::AutoTest
 				LogApplyState("slider moved to 100");
 				RE::UIMessageQueue::GetSingleton()->AddMessage("PauseMenu", RE::UI_MESSAGE_TYPE::kShow);
 				std::this_thread::sleep_for(std::chrono::seconds(3));
-				SendMcmEvent({ "OnMCMMenuOpen|ArtDistributionTool" });
+				SendMcmEvent({ "OnMCMMenuOpen|ArtMixer" });
 				std::this_thread::sleep_for(std::chrono::seconds(2));
 				SendMcmEvent({ "OnMCMClose" });
 				if (WaitForApplyPrompt(20)) {
@@ -837,12 +837,12 @@ namespace ADT::AutoTest
 				}
 				std::this_thread::sleep_for(std::chrono::seconds(6));
 				LogApplyState("after Cancel");
-				SendMcmEvent({ "OnMCMMenuClose|ArtDistributionTool" });
+				SendMcmEvent({ "OnMCMMenuClose|ArtMixer" });
 				const bool stray = WaitForApplyPrompt(6);
 				logger::info("autotest: a close with nothing to apply showed a prompt: {}", stray);
 				if (stray) AnswerApplyPrompt(1);
 				MenuSliderChange(100);
-				SendMcmEvent({ "OnMCMMenuClose|ArtDistributionTool" });
+				SendMcmEvent({ "OnMCMMenuClose|ArtMixer" });
 				SendMcmEvent({ "OnMCMClose" });
 				if (WaitForApplyPrompt(20)) {
 					Console("Screenshot");
@@ -861,7 +861,7 @@ namespace ADT::AutoTest
 			return;
 		}
 		// Apply-now test: first load places the items, changes a setting through MCM (sConsoleAfterA) and reloads through
-		// ADT.ReloadNow; the second load (the reloaded save) is photographed and the game quits.
+		// ArtMixer.ReloadNow; the second load (the reloaded save) is photographed and the game quits.
 		if (s_mode == "applynow") {
 			static std::atomic<int> s_loads{ 0 };
 			if (!a_loaded) return;
@@ -894,7 +894,7 @@ namespace ADT::AutoTest
 						start = bar == std::string::npos ? s_consoleAfterA.size() : bar + 1;
 					}
 					std::this_thread::sleep_for(std::chrono::seconds(2));
-					Console("cgf \"ADT.ReloadNow\"");
+					Console("cgf \"ArtMixer.ReloadNow\"");
 					for (int i = 0; i < 60; ++i) {
 						std::this_thread::sleep_for(std::chrono::seconds(1));
 						RunOnGameThread([] { ConfirmMessageBox(true); });
@@ -1061,9 +1061,9 @@ namespace ADT::AutoTest
 			if (s_skipReload) {
 				if (s_inventoryCheck) {
 					// Saves and loads again, so the log shows the carried and dropped items read back from the co-save.
-					Console("save adtinv");
+					Console("save artmixerinv");
 					std::this_thread::sleep_for(std::chrono::seconds(20));
-					Console("load adtinv");
+					Console("load artmixerinv");
 					for (int i = 0; i < 30; ++i) {
 						std::this_thread::sleep_for(std::chrono::seconds(1));
 						RunOnGameThread([] { ConfirmMessageBox(true); });

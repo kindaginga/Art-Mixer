@@ -7,11 +7,11 @@
 #define NOMINMAX
 #include <Windows.h>
 
-namespace ADT::ApplyNow
+namespace ArtMixer::ApplyNow
 {
 	namespace
 	{
-		constexpr std::string_view kSaveName{ "ADTApply" };
+		constexpr std::string_view kSaveName{ "ArtMixerApply" };
 		// How long a requested save may take before the reload is given up.
 		constexpr auto kSaveTimeout = std::chrono::seconds(60);
 		// How long the save file may take to show its new write time once the game reports the save.
@@ -63,7 +63,7 @@ namespace ADT::ApplyNow
 			return root / local;
 		}
 
-		// True when ADTApply.fos was written at or after the current request.
+		// True when ArtMixerApply.fos was written at or after the current request.
 		[[nodiscard]] bool SaveWritten()
 		{
 			const auto folder = SaveFolder();
@@ -94,8 +94,8 @@ namespace ADT::ApplyNow
 			Distributor::QueueReapply();
 			F4SE::GetTaskInterface()->AddTask([] {
 				if (auto* manager = RE::MessageMenuManager::GetSingleton(); manager) {
-					manager->Create("Art Distribution Tool",
-						"The game could not save as \"ADTApply\", so it did not return to the main menu or reload.\n\nYour changes are applied and show in full the next time you load a save.",
+					manager->Create("Art Mixer",
+						"The game could not save as \"ArtMixerApply\", so it did not return to the main menu or reload.\n\nYour changes are applied and show in full the next time you load a save.",
 						new Notice(), RE::WARNING_TYPES::kDefault, "OK");
 				}
 			});
@@ -113,9 +113,9 @@ namespace ADT::ApplyNow
 		logger::info("apply all: asking ({})", a_leaving ? "leaving the menu with changes" : "button");
 		F4SE::GetTaskInterface()->AddTask([a_leaving] {
 			const char* body = a_leaving ?
-				"Apply your changes?\n\nApply all: saves as \"ADTApply\" and reloads.\nCancel: discards them." :
-				"Apply your changes?\n\nSaves as \"ADTApply\" and reloads.";
-			RE::MessageMenuManager::GetSingleton()->Create("Art Distribution Tool", body, new Prompt(), RE::WARNING_TYPES::kDefault, "Apply all", "Cancel");
+				"Apply your changes?\n\nApply all: saves as \"ArtMixerApply\" and reloads.\nCancel: discards them." :
+				"Apply your changes?\n\nSaves as \"ArtMixerApply\" and reloads.";
+			RE::MessageMenuManager::GetSingleton()->Create("Art Mixer", body, new Prompt(), RE::WARNING_TYPES::kDefault, "Apply all", "Cancel");
 		});
 		return true;
 	}
@@ -154,7 +154,7 @@ namespace ADT::ApplyNow
 		}
 		if (s_checking.exchange(true)) return;
 		const auto request = s_request.load();
-		// Returns to the main menu only once ADTApply.fos carries a write time from this request.
+		// Returns to the main menu only once ArtMixerApply.fos carries a write time from this request.
 		std::thread([request] {
 			const auto deadline = std::chrono::steady_clock::now() + kWriteWait;
 			bool written = SaveWritten();

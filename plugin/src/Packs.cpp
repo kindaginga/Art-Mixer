@@ -4,7 +4,7 @@
 #include "GameArchives.h"
 #include "Settings.h"
 
-namespace ADT::Packs
+namespace ArtMixer::Packs
 {
 	namespace
 	{
@@ -46,7 +46,7 @@ namespace ADT::Packs
 		s_models.clear();
 		s_sections.clear();
 		s_slots.clear();
-		const auto path = std::filesystem::path("Data") / "ADT" / "packs.json";
+		const auto path = std::filesystem::path("Data") / "ArtMixer" / "packs.json";
 		std::ifstream file(path);
 		if (!file) {
 			logger::warn("packs: no {} (no packs converted yet)", path.string());

@@ -11,7 +11,7 @@
 #include <regex>
 #include <set>
 
-namespace ADT::MenuRotation
+namespace ArtMixer::MenuRotation
 {
 	namespace
 	{
@@ -22,7 +22,7 @@ namespace ADT::MenuRotation
 		constexpr std::string_view kImmersiveMusicPrefix{ "mus_maintheme_im" };
 		// The three draw settings, then the two that keep Random Main Menu from leaving the game's own video and music in place.
 		constexpr std::array<const char*, 5> kRandomKeys{ "bEnableRandomMainMenu", "bEnableRandomMusicMenu", "bEnableMusicAssociated", "bDisableDefaultMainMenu", "bDisableDefaultMusicMenu" };
-		constexpr std::array<const char*, 6> kFlagIds{ "bRandomMainMenu:ADT_MainMenu", "bImmersiveMainMenus:ADT_MainMenu", "bImmersiveOnly:ADT_MainMenu", "bRotateThemes:ADT_MainMenu", "bRotateBackgrounds:ADT_MainMenu", "bRotateMusic:ADT_MainMenu" };
+		constexpr std::array<const char*, 6> kFlagIds{ "bRandomMainMenu:ArtMixer_MainMenu", "bImmersiveMainMenus:ArtMixer_MainMenu", "bImmersiveOnly:ArtMixer_MainMenu", "bRotateThemes:ArtMixer_MainMenu", "bRotateBackgrounds:ArtMixer_MainMenu", "bRotateMusic:ArtMixer_MainMenu" };
 		// The menus' names by number, as Immersive Main Menus' installer names them (the 1080p and ultrawide builds share the numbers).
 		constexpr std::array<const char*, 19> kMenuNames{ "", "East Boston Ext.", "Gwinnet Restaurant 1", "Gwinnet Restaurant 2", "Vault 111 Ext.", "Vault 111 Corridor", "Vault 111 Cryogenic Array", "Crater of Atom", "FEV Lab", "Longneck Lukowski's Cannery", "Starlight Interstellar Theatre", "Cliff's Edge Hotel", "Diamond City", "Esplanade", "Lexington", "Lexington River", "Sanctuary Creek", "Red Rocket Night", "Sanctuary Radio" };
 
@@ -390,7 +390,7 @@ namespace ADT::MenuRotation
 				return;
 			}
 			bool changed = false;
-			const std::array<std::pair<const char*, MainMenu::List>, 3> lists{ { { "iPick:ADT_MenuThemes", MainMenu::List::Themes }, { "iPick:ADT_MenuBackgrounds", MainMenu::List::Backgrounds }, { "iPick:ADT_MenuMusic", MainMenu::List::Music } } };
+			const std::array<std::pair<const char*, MainMenu::List>, 3> lists{ { { "iPick:ArtMixer_MenuThemes", MainMenu::List::Themes }, { "iPick:ArtMixer_MenuBackgrounds", MainMenu::List::Backgrounds }, { "iPick:ArtMixer_MenuMusic", MainMenu::List::Music } } };
 			if (!config.contains("pages") || !config["pages"].is_array()) return;
 			for (auto& page : config["pages"]) {
 				if (!page.contains("content") || !page["content"].is_array()) continue;
@@ -569,20 +569,20 @@ namespace ADT::MenuRotation
 			logger::info("mainmenu: {} bytes of the image at {:#x} written to {}", a_size, a_begin, a_file.string());
 		}
 
-		// On request (a file named ArtDistributionTool_dump.request next to the plugin log), writes the game's image and Random
+		// On request (a file named ArtMixer_dump.request next to the plugin log), writes the game's image and Random
 		// Main Menu's image next to the log and removes the request.
 		void DumpOnRequest()
 		{
 			const auto logs = logger::log_directory();
 			if (!logs) return;
 			const auto folder = *logs;
-			const auto request = folder / "ArtDistributionTool_dump.request";
+			const auto request = folder / "ArtMixer_dump.request";
 			std::error_code error;
 			if (!std::filesystem::exists(request, error)) return;
 			const auto base = REL::Module::get().base();
 			const auto image = reinterpret_cast<const IMAGE_NT_HEADERS64*>(base + reinterpret_cast<const IMAGE_DOS_HEADER*>(base)->e_lfanew)->OptionalHeader.SizeOfImage;
-			DumpImage(base, image, folder / "ArtDistributionTool_game.bin");
-			if (s_moduleBegin) DumpImage(s_moduleBegin, s_moduleEnd - s_moduleBegin, folder / "ArtDistributionTool_randommainmenu.bin");
+			DumpImage(base, image, folder / "ArtMixer_game.bin");
+			if (s_moduleBegin) DumpImage(s_moduleBegin, s_moduleEnd - s_moduleBegin, folder / "ArtMixer_randommainmenu.bin");
 			std::filesystem::remove(request, error);
 		}
 
@@ -598,7 +598,7 @@ namespace ADT::MenuRotation
 		const char* HookedMusicPath(char* a_buffer, std::uint32_t a_size, const char* a_path, const char* a_prefix)
 		{
 			const bool random = s_randomMusic.load();
-#ifdef ADT_AUTOTEST
+#ifdef ARTMIXER_AUTOTEST
 			if (!random) {
 				char scratch[MAX_PATH]{};
 				const auto theirs = reinterpret_cast<MusicPathFn>(s_musicCall.random)(scratch, sizeof(scratch), a_path, a_prefix);
@@ -747,7 +747,7 @@ namespace ADT::MenuRotation
 	{
 		if (!s_failed.load() || s_messageShown.exchange(true)) return;
 		if (auto* manager = RE::MessageMenuManager::GetSingleton(); manager) {
-			manager->Create("Art Distribution Tool", "Random Main Menu is installed (Data\\F4SE\\Plugins\\RandomMainMenu.dll) but did not load, so its box on the Main menu page stays off. Check that its version matches your game and that Address Library is installed.", new Notice(), RE::WARNING_TYPES::kDefault, "OK");
+			manager->Create("Art Mixer", "Random Main Menu is installed (Data\\F4SE\\Plugins\\RandomMainMenu.dll) but did not load, so its box on the Main menu page stays off. Check that its version matches your game and that Address Library is installed.", new Notice(), RE::WARNING_TYPES::kDefault, "OK");
 		}
 		logger::info("mainmenu: Random Main Menu load failure message shown; names hidden so far {}", s_hiddenCount.load());
 	}

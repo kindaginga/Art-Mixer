@@ -8,11 +8,11 @@
 #include "Packs.h"
 #include "Settings.h"
 
-namespace ADT::Papyrus
+namespace ArtMixer::Papyrus
 {
 	namespace
 	{
-		constexpr auto kScript = "ADT"sv;
+		constexpr auto kScript = "ArtMixer"sv;
 		// Entries a Papyrus array takes for sure; the menu fixes arrive in rounds of at most this many.
 		constexpr std::size_t kMaxPapyrusArray = 128;
 
@@ -229,7 +229,7 @@ namespace ADT::Papyrus
 		a_vm->BindNativeMethod(kScript, "LoadMenuSettings"sv, LoadMenuSettings, true);
 		a_vm->BindNativeMethod(kScript, "GetMenuFlagIds"sv, GetMenuFlagIds, true);
 		a_vm->BindNativeMethod(kScript, "GetMenuFlagValues"sv, GetMenuFlagValues, true);
-		logger::info("papyrus: ADT natives registered");
+		logger::info("papyrus: ArtMixer natives registered");
 		return true;
 	}
 }

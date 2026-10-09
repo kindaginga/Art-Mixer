@@ -1,10 +1,10 @@
 #pragma once
 
-// Scripted test runs. Only the test build (ADT_AUTOTEST) has them; in the plugin players get, these do nothing.
-namespace ADT::AutoTest
+// Scripted test runs. Only the test build (ARTMIXER_AUTOTEST) has them; in the plugin players get, these do nothing.
+namespace ArtMixer::AutoTest
 {
-#ifdef ADT_AUTOTEST
-	// Reads [AutoTest] from Data\F4SE\Plugins\ArtDistributionTool.ini; returns true when a scripted run is configured.
+#ifdef ARTMIXER_AUTOTEST
+	// Reads [AutoTest] from Data\F4SE\Plugins\ArtMixer.ini; returns true when a scripted run is configured.
 	bool Configure();
 	// True when a scripted run lists the feature ("textures", "loadscreens", "inventory", "pickmodels") in [AutoTest] sSkip.
 	[[nodiscard]] bool Skips(std::string_view a_feature);

@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://qconsulting.ca/fo3/ModConfig5.0.xsd">
-  <moduleName>Art Distribution Tool</moduleName>
+  <moduleName>Art Mixer</moduleName>
   <installSteps order="Explicit">
-    <installStep name="Art Distribution Tool">
+    <installStep name="Art Mixer">
       <optionalFileGroups order="Explicit">
         <group name="Core" type="SelectAll">
           <plugins order="Explicit">
-            <plugin name="Art Distribution Tool core">
-              <description>Installs the F4SE plugin (one DLL for every version of Fallout 4 from 1.10.163 to current), the ArtDistributionTool.esl quest, the MCM menu and the vanilla art catalog. Convert your art mods with the converter afterwards.&#10;&#10;Thank you for trying my mod.</description>
+            <plugin name="Art Mixer core">
+              <description>Installs the F4SE plugin (one DLL for every version of Fallout 4 from 1.10.163 to current), the ArtMixer.esl quest, the MCM menu and the vanilla art catalog. Convert your art mods with the converter afterwards.&#10;&#10;Thank you for trying my mod.</description>
               <files>
                 <folder source="Data" destination="" priority="0" />
               </files>

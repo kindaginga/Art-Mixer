@@ -1,7 +1,7 @@
 #pragma once
 
-namespace ADT::Papyrus
+namespace ArtMixer::Papyrus
 {
-	// Registers the ADT native script functions with the Papyrus VM.
+	// Registers the ArtMixer native script functions with the Papyrus VM.
 	bool Register(RE::BSScript::IVirtualMachine* a_vm);
 }

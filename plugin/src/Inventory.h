@@ -1,6 +1,6 @@
 #pragma once
 
-namespace ADT::Inventory
+namespace ArtMixer::Inventory
 {
 	// Registers the co-save record that keeps which world object each carried item came from (plugin load).
 	void Install();

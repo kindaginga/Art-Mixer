@@ -1,0 +1,73 @@
+{
+  "modName": "ArtMixer",
+  "displayName": "Art Mixer",
+  "minMcmVersion": 2,
+  "pluginRequirements": [
+    "ArtMixer.esl"
+  ],
+  "content": [
+    {
+      "type": "text",
+      "text": "\u003Cfont size=\u002724\u0027\u003E\u003Cfont color=\u0027#FF0000\u0027\u003EArt\u003C/font\u003E \u003Cfont color=\u0027#FFFFFF\u0027\u003EDistribution\u003C/font\u003E \u003Cfont color=\u0027#A020F0\u0027\u003ETool\u003C/font\u003E\u003C/font\u003E",
+      "html": true
+    },
+    {
+      "type": "text",
+      "text": "No packs. Run the converter.",
+      "html": false
+    },
+    {
+      "type": "text",
+      "text": "Changes take effect on Apply all.",
+      "html": false
+    },
+    {
+      "type": "spacer",
+      "numLines": 1
+    },
+    {
+      "type": "section",
+      "text": "Options"
+    },
+    {
+      "id": "bNewLayoutEachLoad:ArtMixer_Main",
+      "type": "switcher",
+      "text": "New layout on every load",
+      "help": "New arrangement on every load.",
+      "valueOptions": {
+        "sourceType": "ModSettingBool"
+      }
+    },
+    {
+      "type": "button",
+      "text": "Apply all",
+      "help": "Saves, reloads, applies every change.",
+      "action": {
+        "type": "CallFunction",
+        "form": "ArtMixer.esl|800",
+        "function": "ApplyAll"
+      }
+    },
+    {
+      "type": "button",
+      "text": "Shuffle layout",
+      "help": "New arrangement, same settings.",
+      "action": {
+        "type": "CallFunction",
+        "form": "ArtMixer.esl|800",
+        "function": "Shuffle"
+      }
+    },
+    {
+      "type": "button",
+      "text": "Reset all settings",
+      "help": "Everything back to default.",
+      "action": {
+        "type": "CallFunction",
+        "form": "ArtMixer.esl|800",
+        "function": "ResetAll"
+      }
+    }
+  ],
+  "pages": []
+}

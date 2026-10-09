@@ -1,9 +1,9 @@
 #pragma once
 
-namespace ADT::Settings
+namespace ArtMixer::Settings
 {
 	inline constexpr int kMaxSlots = 128;  // slots one page or list may have: the Papyrus array limit
-	inline constexpr std::string_view kModName = "ArtDistributionTool"sv;
+	inline constexpr std::string_view kModName = "ArtMixer"sv;
 
 	struct CategorySettings
 	{
@@ -41,7 +41,7 @@ namespace ADT::Settings
 	// A Main menu page value as applied (lowercase key such as "brandommainmenu"), or nothing when never applied.
 	[[nodiscard]] std::optional<int> MainMenuFlag(std::string_view a_key);
 	// MCM section names carry this prefix (lowercase here); category names drop it.
-	inline constexpr std::string_view kSectionPrefix{ "adt_" };
+	inline constexpr std::string_view kSectionPrefix{ "artmixer_" };
 	// Lowercase category name without the MCM section prefix.
 	[[nodiscard]] std::string NormalizeCategory(std::string_view a_category);
 	[[nodiscard]] std::string Lower(std::string_view a_text);

@@ -3,7 +3,7 @@
 #include "Engine.h"
 #include "Packs.h"
 
-namespace ADT::Distributor
+namespace ArtMixer::Distributor
 {
 	struct Stats
 	{

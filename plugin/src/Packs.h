@@ -1,6 +1,6 @@
 #pragma once
 
-namespace ADT::Packs
+namespace ArtMixer::Packs
 {
 	struct Image
 	{
@@ -70,7 +70,7 @@ namespace ADT::Packs
 		std::vector<std::pair<std::string, std::string>> inlineShaders;
 	};
 
-	// Loads Data\ADT\packs.json written by the converter.
+	// Loads Data\ArtMixer\packs.json written by the converter.
 	bool Load();
 	// Resolves the swap forms pack versions name and puts back game records a converted mod's plugin changed (game data loaded).
 	void OnGameDataReady();

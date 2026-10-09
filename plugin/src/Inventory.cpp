@@ -2,7 +2,7 @@
 
 #include <unordered_map>
 
-namespace ADT::Inventory
+namespace ArtMixer::Inventory
 {
 	namespace
 	{

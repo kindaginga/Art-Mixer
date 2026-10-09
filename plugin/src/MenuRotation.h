@@ -3,7 +3,7 @@
 // Random Main Menu (Nexus 74187) and Immersive Main Menus (Nexus 82077) support: the packs' menu files offered to Random Main
 // Menu under the names it draws from, its settings driven by the Main menu page, Immersive Main Menus' menus as picks, and the
 // names Random Main Menu is kept from seeing.
-namespace ADT::MenuRotation
+namespace ArtMixer::MenuRotation
 {
 	// One Immersive Main Menus menu found in Data\Video: its id ("im11uw"), its name, and its files relative to the game folder.
 	struct ImmersiveMenu
@@ -40,7 +40,7 @@ namespace ADT::MenuRotation
 	[[nodiscard]] Flags Effective();
 	// The flags the Main menu page shows by default: each box on when its mod is found, every switch off.
 	[[nodiscard]] Flags Defaults();
-	// The ids and values of the six Main menu page switches, as MCM ids ("bRandomMainMenu:ADT_MainMenu"), in effect or by default.
+	// The ids and values of the six Main menu page switches, as MCM ids ("bRandomMainMenu:ArtMixer_MainMenu"), in effect or by default.
 	[[nodiscard]] std::vector<std::pair<std::string, int>> FlagValues(bool a_defaults);
 	// Writes or removes the packs' Random Main Menu entries, sets Random Main Menu's settings, and sets the names hidden from it,
 	// all from the flags in effect; also brings the MCM lists up to date with the Immersive Main Menus menus shown.

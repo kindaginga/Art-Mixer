@@ -60,37 +60,37 @@ namespace
 		if (!a_message) return;
 		switch (a_message->type) {
 		case F4SE::MessagingInterface::kPostLoad:
-			ADT::MenuRotation::OnPluginsLoaded();
+			ArtMixer::MenuRotation::OnPluginsLoaded();
 			break;
 		case F4SE::MessagingInterface::kGameDataReady:
-			ADT::CoreCheck::OnGameDataReady();
-			ADT::GameArchives::Install();
-			ADT::Catalog::ResolveForms();
-			ADT::Packs::OnGameDataReady();
-			ADT::Distributor::ApplyTextureSets();
-			ADT::Distributor::ApplyBounds();
-			ADT::Distributor::ApplyWorldMap();
-			if (!ADT::AutoTest::Skips("pickmodels")) ADT::Distributor::ApplyPickModels();
-			if (!ADT::AutoTest::Skips("inventory")) ADT::Inventory::OnGameDataReady();
-			if (!ADT::AutoTest::Skips("loadscreens")) ADT::LoadScreens::OnGameDataReady();
-			ADT::MainMenu::OnGameDataReady();
-			ADT::AutoTest::OnGameDataReady();
+			ArtMixer::CoreCheck::OnGameDataReady();
+			ArtMixer::GameArchives::Install();
+			ArtMixer::Catalog::ResolveForms();
+			ArtMixer::Packs::OnGameDataReady();
+			ArtMixer::Distributor::ApplyTextureSets();
+			ArtMixer::Distributor::ApplyBounds();
+			ArtMixer::Distributor::ApplyWorldMap();
+			if (!ArtMixer::AutoTest::Skips("pickmodels")) ArtMixer::Distributor::ApplyPickModels();
+			if (!ArtMixer::AutoTest::Skips("inventory")) ArtMixer::Inventory::OnGameDataReady();
+			if (!ArtMixer::AutoTest::Skips("loadscreens")) ArtMixer::LoadScreens::OnGameDataReady();
+			ArtMixer::MainMenu::OnGameDataReady();
+			ArtMixer::AutoTest::OnGameDataReady();
 			break;
 		case F4SE::MessagingInterface::kPostSaveGame:
-			ADT::ApplyNow::OnPostSaveGame(a_message->data, a_message->dataLen);
+			ArtMixer::ApplyNow::OnPostSaveGame(a_message->data, a_message->dataLen);
 			break;
 		case F4SE::MessagingInterface::kPreLoadGame:
 			// "New layout on every load": the save's areas load with the next seed; Apply now's own reload keeps the current one.
-			if (!ADT::ApplyNow::OnPreLoadGame() && ADT::Settings::Get().newLayoutEachLoad) {
-				ADT::Settings::SetSeed(ADT::Settings::Seed() + 1);
-				ADT::Settings::Save();
-				ADT::Distributor::Reapply();
-				logger::info("new layout on every load: seed {}", ADT::Settings::Seed());
+			if (!ArtMixer::ApplyNow::OnPreLoadGame() && ArtMixer::Settings::Get().newLayoutEachLoad) {
+				ArtMixer::Settings::SetSeed(ArtMixer::Settings::Seed() + 1);
+				ArtMixer::Settings::Save();
+				ArtMixer::Distributor::Reapply();
+				logger::info("new layout on every load: seed {}", ArtMixer::Settings::Seed());
 			}
 			break;
 		case F4SE::MessagingInterface::kPostLoadGame:
 			// The message's data pointer carries the load result itself.
-			ADT::AutoTest::OnPostLoadGame(reinterpret_cast<std::uintptr_t>(a_message->data) != 0);
+			ArtMixer::AutoTest::OnPostLoadGame(reinterpret_cast<std::uintptr_t>(a_message->data) != 0);
 			break;
 		default:
 			break;
@@ -111,29 +111,29 @@ bool Plugin::Initialize(const F4SE::LoadInterface* a_f4se)
 	const auto& module = REL::Module::get();
 	logger::info("{} v{} (build {}) loaded on runtime {}", Version::PROJECT, Version::NAME, BuildStamp::COMMIT, module.version().string());
 
-	const bool engine = ADT::Engine::Initialize();
-	ADT::Catalog::Load();
-	ADT::Packs::Load();
-	ADT::MenuRotation::Detect();
+	const bool engine = ArtMixer::Engine::Initialize();
+	ArtMixer::Catalog::Load();
+	ArtMixer::Packs::Load();
+	ArtMixer::MenuRotation::Detect();
 	if (engine) {
-		ADT::Engine::InstallHooks(&ADT::Distributor::OnModelLoaded);
-		ADT::Engine::InstallReferenceHook(&ADT::Distributor::OnReference3D);
-		ADT::Engine::InstallModelHook(&ADT::Distributor::ChooseModel);
-		ADT::Engine::InstallSwapApplyHook();
-		if (!ADT::AutoTest::Skips("textures")) ADT::Engine::InstallTextureHook(&ADT::Distributor::ChooseTexture);
+		ArtMixer::Engine::InstallHooks(&ArtMixer::Distributor::OnModelLoaded);
+		ArtMixer::Engine::InstallReferenceHook(&ArtMixer::Distributor::OnReference3D);
+		ArtMixer::Engine::InstallModelHook(&ArtMixer::Distributor::ChooseModel);
+		ArtMixer::Engine::InstallSwapApplyHook();
+		if (!ArtMixer::AutoTest::Skips("textures")) ArtMixer::Engine::InstallTextureHook(&ArtMixer::Distributor::ChooseTexture);
 	}
-	if (!ADT::AutoTest::Skips("inventory")) ADT::Inventory::Install();
-	ADT::MainMenu::Install();
-	if (engine) ADT::Engine::InstallMovieHook(&ADT::MainMenu::RedirectMovie);
-	ADT::MainMenu::LoadFromPacks();
+	if (!ArtMixer::AutoTest::Skips("inventory")) ArtMixer::Inventory::Install();
+	ArtMixer::MainMenu::Install();
+	if (engine) ArtMixer::Engine::InstallMovieHook(&ArtMixer::MainMenu::RedirectMovie);
+	ArtMixer::MainMenu::LoadFromPacks();
 	// The menu lists are built first: the applied settings name their picks by entry.
-	ADT::Settings::Load();
-	ADT::MainMenu::LoadPicks();
+	ArtMixer::Settings::Load();
+	ArtMixer::MainMenu::LoadPicks();
 	// Random Main Menu reads its settings file when it loads, after this plugin, so the file is written here and again once its module is known.
-	ADT::MenuRotation::Apply();
-	ADT::AutoTest::Configure();
+	ArtMixer::MenuRotation::Apply();
+	ArtMixer::AutoTest::Configure();
 
 	F4SE::GetMessagingInterface()->RegisterListener(OnMessage);
-	F4SE::GetPapyrusInterface()->Register(ADT::Papyrus::Register);
+	F4SE::GetPapyrusInterface()->Register(ArtMixer::Papyrus::Register);
 	return true;
 }

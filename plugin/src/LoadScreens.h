@@ -1,8 +1,8 @@
 #pragma once
 
-namespace ADT::LoadScreens
+namespace ArtMixer::LoadScreens
 {
-	// Finds the game's loading screen records and Art Distribution Tool's card forms, then prepares the first loading screen.
+	// Finds the game's loading screen records and Art Mixer's card forms, then prepares the first loading screen.
 	void OnGameDataReady();
 	// Prepares the next loading screen once one closes (game thread).
 	void OnLoadingMenuClosed();

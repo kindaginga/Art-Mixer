@@ -3,7 +3,7 @@
 #include "MainMenu.h"
 #include "Packs.h"
 
-namespace ADT::Settings
+namespace ArtMixer::Settings
 {
 	namespace
 	{
@@ -76,7 +76,7 @@ namespace ADT::Settings
 				const auto text = Trim(line);
 				if (text.empty() || text[0] == ';' || text[0] == '#') continue;
 				if (text.front() == '[' && text.back() == ']') {
-					// Only the ADT_ sections the MCM pages write; anything else is a leftover of an older layout.
+					// Only the ArtMixer_ sections the MCM pages write; anything else is a leftover of an older layout.
 					const auto name = Lower(text.substr(1, text.size() - 2));
 					section = name.starts_with(kSectionPrefix) ? name.substr(kSectionPrefix.size()) : std::string();
 					continue;
@@ -266,14 +266,14 @@ namespace ADT::Settings
 
 	bool Save()
 	{
-		std::string text = "; Art Distribution Tool: the settings in effect, written whenever changes are applied in the menu.\n";
+		std::string text = "; Art Mixer: the settings in effect, written whenever changes are applied in the menu.\n";
 		{
 			std::scoped_lock lock(s_mutex);
-			text += fmt::format("[ADT_Main]\nbNewLayoutEachLoad={}\niSeed={}\n", s_values.newLayoutEachLoad ? 1 : 0, s_values.seed);
+			text += fmt::format("[ArtMixer_Main]\nbNewLayoutEachLoad={}\niSeed={}\n", s_values.newLayoutEachLoad ? 1 : 0, s_values.seed);
 			if (!s_values.mainMenu.empty()) {
 				// The keys as the Main menu page spells them; a key the page does not have keeps its lowercase spelling.
 				static const std::map<std::string, std::string> s_spelling{ { "brandommainmenu", "bRandomMainMenu" }, { "bimmersivemainmenus", "bImmersiveMainMenus" }, { "bimmersiveonly", "bImmersiveOnly" }, { "brotatethemes", "bRotateThemes" }, { "brotatebackgrounds", "bRotateBackgrounds" }, { "brotatemusic", "bRotateMusic" }, { "imainmenumodel", "iMainMenuModel" } };
-				text += "\n[ADT_MainMenu]\n";
+				text += "\n[ArtMixer_MainMenu]\n";
 				for (const auto& [key, value] : s_values.mainMenu) {
 					const auto spelled = s_spelling.find(key);
 					text += fmt::format("{}={}\n", spelled == s_spelling.end() ? key : spelled->second, value);

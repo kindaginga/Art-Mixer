@@ -35,10 +35,10 @@ if (-not $SkipBuild) {
     if ($LASTEXITCODE -ne 0) { throw "plugin build failed" }
     Pop-Location
     Push-Location (Join-Path $root "tools\BuildEsl")
-    dotnet run -c Release -- (Join-Path $root "mod\Data\ArtDistributionTool.esl") | Out-Null
+    dotnet run -c Release -- (Join-Path $root "mod\Data\ArtMixer.esl") | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "ESL build failed" }
     Pop-Location
-    Push-Location (Join-Path $root "converter\ADTConvert")
+    Push-Location (Join-Path $root "converter\ArtMixerConvert")
     # Framework-dependent: the exe needs the .NET 10 Desktop Runtime on the player's machine and carries no runtime of its own.
     dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:Version=$Version -o (Join-Path $stage "converter") | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "converter publish failed" }
@@ -47,8 +47,8 @@ if (-not $SkipBuild) {
 
 # Converter folder: the published exe with its vanilla catalog and the Read Me.
 $conv = Join-Path $stage "converter"
-Copy-Item (Join-Path $root "mod\Data\ADT\vanilla-slots.json") $conv
-Copy-Item (Join-Path $root "mod\Art Distribution Tool - Read Me.txt") $conv
+Copy-Item (Join-Path $root "mod\Data\ArtMixer\vanilla-slots.json") $conv
+Copy-Item (Join-Path $root "mod\Art Mixer - Read Me.txt") $conv
 Get-ChildItem $conv -Filter "*.pdb" | Remove-Item
 
 # Notices for the third-party code built into the plugin and the converter, all MIT: each component's copyright lines, then the
@@ -56,17 +56,17 @@ Get-ChildItem $conv -Filter "*.pdb" | Remove-Item
 $utf8 = New-Object System.Text.UTF8Encoding($false)
 $share = Join-Path $root "plugin\build\vs2026\vcpkg_installed\x64-windows-static-md\share"
 $components = @(
-    @{ Name = "CommonLibF4"; In = "ArtDistributionTool.dll"; File = Join-Path $root "plugin\external\CommonLibF4RD\LICENSE" },
-    @{ Name = "nlohmann-json"; In = "ArtDistributionTool.dll"; File = Join-Path $share "nlohmann-json\copyright" },
-    @{ Name = "spdlog"; In = "ArtDistributionTool.dll"; File = Join-Path $share "spdlog\copyright" },
-    @{ Name = "rsm-mmio"; In = "ArtDistributionTool.dll"; File = Join-Path $share "rsm-mmio\copyright" },
-    @{ Name = "zydis"; In = "ArtDistributionTool.dll"; File = Join-Path $share "zydis\copyright" },
-    @{ Name = "zycore"; In = "ArtDistributionTool.dll"; File = Join-Path $share "zycore\copyright" },
-    @{ Name = "libdeflate"; In = "ArtDistributionTool.dll"; File = Join-Path $share "libdeflate\copyright" },
-    @{ Name = "MaterialLib"; In = "Art Distribution Tool.exe"; File = Join-Path $root "converter\external\MaterialLib\LICENSE" }
+    @{ Name = "CommonLibF4"; In = "ArtMixer.dll"; File = Join-Path $root "plugin\external\CommonLibF4RD\LICENSE" },
+    @{ Name = "nlohmann-json"; In = "ArtMixer.dll"; File = Join-Path $share "nlohmann-json\copyright" },
+    @{ Name = "spdlog"; In = "ArtMixer.dll"; File = Join-Path $share "spdlog\copyright" },
+    @{ Name = "rsm-mmio"; In = "ArtMixer.dll"; File = Join-Path $share "rsm-mmio\copyright" },
+    @{ Name = "zydis"; In = "ArtMixer.dll"; File = Join-Path $share "zydis\copyright" },
+    @{ Name = "zycore"; In = "ArtMixer.dll"; File = Join-Path $share "zycore\copyright" },
+    @{ Name = "libdeflate"; In = "ArtMixer.dll"; File = Join-Path $share "libdeflate\copyright" },
+    @{ Name = "MaterialLib"; In = "Art Mixer.exe"; File = Join-Path $root "converter\external\MaterialLib\LICENSE" }
 )
 $notices = New-Object System.Collections.Generic.List[string]
-$notices.Add("Third-party code in Art Distribution Tool")
+$notices.Add("Third-party code in Art Mixer")
 $notices.Add("")
 $notices.Add("Every component below is under the MIT License; its text follows the list.")
 foreach ($in in ($components | ForEach-Object { $_.In } | Select-Object -Unique)) {
@@ -89,28 +89,28 @@ $notices.AddRange([string[]]($mit[$permission..($mit.Count - 1)] | ForEach-Objec
 while ($notices[$notices.Count - 1] -eq "") { $notices.RemoveAt($notices.Count - 1) }
 [IO.File]::WriteAllText((Join-Path $conv "THIRD-PARTY-NOTICES.txt"), (($notices -join "`r`n") + "`r`n"), $utf8)
 
-# Core mod (FOMOD), with the converter inside as a tool (Tools\ArtDistributionTool) so managers can launch it.
-New-Item -ItemType Directory -Force (Join-Path $core "Data\F4SE\Plugins"), (Join-Path $core "fomod"), (Join-Path $core "Data\Tools\ArtDistributionTool") | Out-Null
-Copy-Item (Join-Path $conv "*") (Join-Path $core "Data\Tools\ArtDistributionTool\") -Recurse
-Copy-Item (Join-Path $root "plugin\build\vs2026\Release\ArtDistributionTool.dll") (Join-Path $core "Data\F4SE\Plugins\")
-Copy-Item (Join-Path $root "mod\Data\ArtDistributionTool.esl") (Join-Path $core "Data\")
+# Core mod (FOMOD), with the converter inside as a tool (Tools\ArtMixer) so managers can launch it.
+New-Item -ItemType Directory -Force (Join-Path $core "Data\F4SE\Plugins"), (Join-Path $core "fomod"), (Join-Path $core "Data\Tools\ArtMixer") | Out-Null
+Copy-Item (Join-Path $conv "*") (Join-Path $core "Data\Tools\ArtMixer\") -Recurse
+Copy-Item (Join-Path $root "plugin\build\vs2026\Release\ArtMixer.dll") (Join-Path $core "Data\F4SE\Plugins\")
+Copy-Item (Join-Path $root "mod\Data\ArtMixer.esl") (Join-Path $core "Data\")
 Copy-Item (Join-Path $root "mod\Data\Scripts") (Join-Path $core "Data\Scripts") -Recurse
 Copy-Item (Join-Path $root "mod\Data\MCM") (Join-Path $core "Data\MCM") -Recurse
-Copy-Item (Join-Path $root "mod\Data\ADT") (Join-Path $core "Data\ADT") -Recurse
+Copy-Item (Join-Path $root "mod\Data\ArtMixer") (Join-Path $core "Data\ArtMixer") -Recurse
 Copy-Item (Join-Path $root "mod\fomod\*") (Join-Path $core "fomod\")
 
 # The list of the core mod's files with size and SHA-256, which the converter and the plugin check the installed mod against.
 # The converter's packs replace the three replaceable files where both mods are deployed into one folder.
 $data = (Resolve-Path (Join-Path $core "Data")).Path.TrimEnd('\') + '\'
-$replaceable = 'ADT/vanilla-slots.json', 'MCM/Config/ArtDistributionTool/config.json', 'MCM/Config/ArtDistributionTool/settings.ini'
+$replaceable = 'ArtMixer/vanilla-slots.json', 'MCM/Config/ArtMixer/config.json', 'MCM/Config/ArtMixer/settings.ini'
 $entries = Get-ChildItem $data -Recurse -File | Sort-Object FullName | ForEach-Object {
     $path = $_.FullName.Substring($data.Length).Replace('\', '/')
     $entry = '    { "path": "' + $path + '", "size": ' + $_.Length + ', "sha256": "' + (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() + '"'
     if ($replaceable -contains $path) { $entry += ', "replaceable": true' }
     $entry + ' }'
 }
-[IO.File]::WriteAllText((Join-Path $data "ADT\core-files.json"), "{`n  `"version`": `"$Version`",`n  `"files`": [`n" + ($entries -join ",`n") + "`n  ]`n}`n", $utf8)
+[IO.File]::WriteAllText((Join-Path $data "ArtMixer\core-files.json"), "{`n  `"version`": `"$Version`",`n  `"files`": [`n" + ($entries -join ",`n") + "`n  ]`n}`n", $utf8)
 
-Write-Zip $core (Join-Path $dist "ArtDistributionTool-$Version.zip")
+Write-Zip $core (Join-Path $dist "ArtMixer-$Version.zip")
 
 Get-ChildItem $dist -Filter "*.zip" | ForEach-Object { "{0}  {1:N0} bytes" -f $_.Name, $_.Length }

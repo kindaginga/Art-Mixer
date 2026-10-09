@@ -11,7 +11,7 @@
 #define NOMINMAX
 #include <Windows.h>
 
-namespace ADT::MainMenu
+namespace ArtMixer::MainMenu
 {
 	namespace
 	{
@@ -184,7 +184,7 @@ namespace ADT::MainMenu
 		// The chosen pack id lives in the plugin's own state file, since the main menu runs no Papyrus.
 		[[nodiscard]] std::filesystem::path StatePath()
 		{
-			return std::filesystem::path("Data") / "ADT" / "state.json";
+			return std::filesystem::path("Data") / "ArtMixer" / "state.json";
 		}
 
 		void SaveState()
@@ -887,7 +887,7 @@ namespace ADT::MainMenu
 		}
 		// Immersive Main Menus' menus after the packs; their music plays from a short-named copy, made when it is picked.
 		for (const auto& menu : MenuRotation::Menus()) {
-			Option option{ menu.name, menu.video, menu.music.empty() ? std::string() : "ADT\\" + menu.id + ".xwm" };
+			Option option{ menu.name, menu.video, menu.music.empty() ? std::string() : "ArtMixer\\" + menu.id + ".xwm" };
 			option.immersive = true;
 			option.musicSource = menu.music;
 			options.push_back(std::move(option));

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(ArtDistributionTool VERSION 1.0.0 LANGUAGES CXX)
+project(ArtMixer VERSION 1.0.0 LANGUAGES CXX)
 
 if (PROJECT_SOURCE_DIR STREQUAL PROJECT_BINARY_DIR)
 	message(FATAL_ERROR "In-source builds are not allowed.")
@@ -87,9 +87,9 @@ endfunction()
 # The plugin players get.
 add_plugin(${PROJECT_NAME})
 
-# The test build: the same sources plus the scripted test runs. It is written to Test/<config>/ArtDistributionTool.dll and is never packaged.
+# The test build: the same sources plus the scripted test runs. It is written to Test/<config>/ArtMixer.dll and is never packaged.
 add_plugin(${PROJECT_NAME}Test src/AutoTest.cpp)
-target_compile_definitions(${PROJECT_NAME}Test PRIVATE ADT_AUTOTEST)
+target_compile_definitions(${PROJECT_NAME}Test PRIVATE ARTMIXER_AUTOTEST)
 set_target_properties(${PROJECT_NAME}Test PROPERTIES
 	OUTPUT_NAME ${PROJECT_NAME}
 	RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/Test

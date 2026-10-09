@@ -9,7 +9,7 @@
 #define NOMINMAX
 #include <Windows.h>
 
-namespace ADT::LoadScreens
+namespace ArtMixer::LoadScreens
 {
 	namespace
 	{
@@ -40,7 +40,7 @@ namespace ADT::LoadScreens
 		std::mutex s_mutex;
 		std::vector<Record> s_records;
 		RE::TESObjectSTAT* s_card{ nullptr };
-		// One card per distinct card model (ArtDistributionTool.esl 0x900 onward).
+		// One card per distinct card model (ArtMixer.esl 0x900 onward).
 		std::vector<RE::TESObjectSTAT*> s_cards;
 		RE::BGSTransform* s_magazineTransform{ nullptr };
 		bool s_active{ false };
@@ -238,11 +238,11 @@ namespace ADT::LoadScreens
 			logger::info("loading screens: ALR is active, so its loading screens are left to it");
 			return;
 		}
-		s_card = data->LookupForm<RE::TESObjectSTAT>(0x802, "ArtDistributionTool.esl");
+		s_card = data->LookupForm<RE::TESObjectSTAT>(0x802, "ArtMixer.esl");
 		s_magazineTransform = data->LookupForm<RE::BGSTransform>(0x249731, "Fallout4.esm");
 		if (!s_magazineTransform) logger::warn("loading screens: the game's magazine framing (Fallout4.esm 0x249731) is missing, so cover cards keep each screen's own framing");
 		if (!s_card) {
-			logger::warn("loading screens: the card form is missing from ArtDistributionTool.esl");
+			logger::warn("loading screens: the card form is missing from ArtMixer.esl");
 			return;
 		}
 		std::scoped_lock lock(s_mutex);
@@ -287,11 +287,11 @@ namespace ADT::LoadScreens
 			logger::warn("loading screens: the rotation and zoom ranges are not where they were measured, so cards keep each screen's own motion");
 		}
 		for (std::uint32_t i = 0; i < 512; ++i) {
-			auto* card = data->LookupForm<RE::TESObjectSTAT>(0x900 + i, "ArtDistributionTool.esl");
+			auto* card = data->LookupForm<RE::TESObjectSTAT>(0x900 + i, "ArtMixer.esl");
 			if (!card) break;
 			s_cards.push_back(card);
 		}
-		if (s_cards.empty()) logger::warn("loading screens: the card statics are missing from ArtDistributionTool.esl");
+		if (s_cards.empty()) logger::warn("loading screens: the card statics are missing from ArtMixer.esl");
 		s_cardColor = static_cast<RE::BGSModelMaterialSwap*>(s_card)->colorRemappingIndex;
 		s_active = !s_records.empty();
 		logger::info("loading screens: {} records ({} with a framing), {} skipped", s_records.size(), std::count_if(s_records.begin(), s_records.end(), [](const Record& r) { return r.transform != nullptr; }), skipped);

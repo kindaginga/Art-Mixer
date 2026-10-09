@@ -8,14 +8,14 @@
 #include <list>
 #include "Settings.h"
 
-namespace ADT::GameArchives
+namespace ArtMixer::GameArchives
 {
 	namespace
 	{
 		using Data = std::shared_ptr<const std::vector<std::uint8_t>>;
 		using ErrorCode = RE::BSResource::ErrorCode;
 
-		constexpr std::string_view kMarker = "\\adt\\game\\";
+		constexpr std::string_view kMarker = "\\artmixer\\game\\";
 
 #pragma pack(push, 1)
 		struct Header
@@ -321,7 +321,7 @@ namespace ADT::GameArchives
 			return data;
 		}
 
-		// The game file a requested path names through textures\adt\game\ or meshes\adt\game\, as its lowercase path relative to
+		// The game file a requested path names through textures\artmixer\game\ or meshes\artmixer\game\, as its lowercase path relative to
 		// Data with backslashes; empty for any other path.
 		[[nodiscard]] std::string Alias(const char* a_path)
 		{
@@ -477,7 +477,7 @@ namespace ADT::GameArchives
 				if (relative.empty() || a_writable) return ErrorCode::kNotExist;
 				auto file = Find(relative);
 				if (!file.entry) {
-#ifdef ADT_AUTOTEST
+#ifdef ARTMIXER_AUTOTEST
 					logger::info("autotest: game archive file not served: '{}'", a_path ? a_path : "");
 #endif
 					return ErrorCode::kNotExist;
@@ -532,7 +532,7 @@ namespace ADT::GameArchives
 		std::array<GameSource, 4> s_gameSources{};
 		int s_gameSourceCount{ 0 };
 
-		// Answers an ADT\Game request made straight to one of the game's own file sources, as a model load makes it.
+		// Answers an ArtMixer\Game request made straight to one of the game's own file sources, as a model load makes it.
 		ErrorCode HookedCreateStream(RE::BSResource::Location* a_self, const char* a_path, RE::BSTSmartPointer<RE::BSResource::Stream>& a_result, RE::BSResource::Location*& a_location, bool a_writable, RE::BSResource::LocationTraverser* a_traverser)
 		{
 			if (s_source && s_source->DoCreateStream(a_path, a_result, a_location, a_writable, a_traverser) == ErrorCode::kNone) return ErrorCode::kNone;

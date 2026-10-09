@@ -1,0 +1,125 @@
+ART MIXER
+=====================
+
+Install several art mods at once and choose, in the MCM, how much of each one you see. Install three
+painting mods and set them to 50, 30 and 20: half the paintings show the first mod's art, 30% the second's
+and 20% the third's. Set them lower and some paintings stay vanilla.
+
+Covers paintings, posters, signs, magazines, quest pictures, props and set dressing, the Pip-Boy screen and
+skin, the Pip-Boy world map, magazine covers on loading screens, and the main menu background and music.
+
+Works with every version of Fallout 4 from 1.10.163 to current with the same files (untested on VR),
+under Mod Organizer 2 or Vortex.
+
+
+REQUIREMENTS
+------------
+  - F4SE for your game version (f4se.silverlock.org)
+  - Mod Configuration Menu 1.39 or later (Nexus 21497)
+  - Runtime Database (Nexus 108394)
+  - .NET 10 Desktop Runtime, x64 (dotnet.microsoft.com/download/dotnet/10.0), for the converter only
+
+
+INSTALL
+-------
+1. Install the requirements.
+2. Install Art Mixer with your mod manager and enable ArtMixer.esl.
+3. Install your art mods as usual, with whatever installer options you like.
+4. Run the converter (see CONVERTER), press "Find installed art mods", then "Convert".
+5. Enable the new "Art Mixer Packs" mod:
+     Mod Organizer 2: press F5, enable it and place it BELOW Art Mixer.
+     Vortex: install "Art Mixer Packs.zip" from Downloads, enable it, let it win over
+     Art Mixer.
+   You can now disable the art mods you converted. Keep a mod enabled if it also adds new objects of its
+   own; Art Mixer still decides what its replaced art shows.
+6. In game, open MCM > Art Mixer, set the sliders and press "Apply all".
+
+
+CONVERTER
+---------
+The converter is Tools\ArtMixer\Art Mixer.exe inside the mod. Add it as a tool:
+  Mod Organizer 2: Executables (gears icon) > Add > browse to
+    <instance>\mods\Art Mixer\Tools\ArtMixer\Art Mixer.exe
+  Vortex: Dashboard > Add tool > browse to Data\Tools\ArtMixer\Art Mixer.exe
+
+It finds your Mod Organizer 2 instances and Vortex by itself. "Find installed art mods" lists the mods that
+hold art, grouped by the kind of art each holds most of; enabled ones are ticked. The "Props and set
+dressing" group starts collapsed: open it to see which of those mods will be converted. Mods in the
+"Mostly not art" group (graphics overhauls, item sorters and other mods that mostly change things other
+than art) start collapsed and unticked: tick one to convert its art. Each ticked mod becomes one pack named after the mod (rename the mod in
+your manager to rename the pack). Every conversion rebuilds all packs from the ticked mods. The log and
+ArtMixer\convert-report.txt in the output say what was taken from each mod and what was left to it.
+
+Run it again whenever you add, remove or change art mods. Converting the same mods keeps your settings; a
+different set of mods resets every setting to its default.
+
+Only art is converted. Anything else a mod changes (bodies, armor, weapons, interface, sounds, map
+interface mods) stays with that mod, so keep such a mod enabled.
+
+Without a mod manager: unpack each art mod into its own folder and run
+  "Art Mixer.exe" --game "<Fallout 4 folder>" --out "<empty folder>" <art mod folder> ...
+then copy the contents of the output folder into Fallout 4\Data, replacing files.
+
+
+MENU
+----
+  Paintings, Posters, Signage, Magazines, Quest
+                   One slider per pack whose art is all of that one kind: the percent of everything that
+                   pack replaces that shows its art. Sliders never move each other. When packs replace the
+                   same object, their percents share it; the rest is vanilla.
+  Mixed packs      One slider per pack with art of more than one kind, such as magazine covers and
+                   paintings, or props and signs. It sets all of that pack's art.
+  Other replacers  One on/off switch per pack, for props and set dressing.
+  Pip-Boy          Pick the screen background and the skin: Vanilla or one pack each.
+  World map        Pick the Pip-Boy world map: Vanilla or one pack. A map drawn at a different size keeps
+                   its markers lined up.
+  Loading screens  One slider per pack with magazine covers: the percent of loading screens that show its
+                   covers.
+  Main menu        Themes, Backgrounds and Music: the same picks as the "MENU ART" entry on the main
+                   menu. With Random Main Menu (Nexus 74187) installed, a Random Main Menu box appears
+                   below them. Off: your picks play. On: your packs join its draw, by "Rotate themes"
+                   (a background with its music), "Rotate backgrounds" (the Music pick stays) or
+                   "Rotate music" (the Backgrounds pick stays). With Immersive Main Menus (Nexus 82077)
+                   installed as well, its box adds its menus to the lists and to the draw, and
+                   "Immersive Main Menus only" keeps your picks out of the draw. Neither mod is
+                   required; the boxes appear only when the mod is found at game start.
+
+  Apply all        Applies your changes. The game saves as ArtMixerApply and reloads it, so everything updates
+                   at once. Leaving the menu with changes not applied asks "Apply all" or "Cancel".
+  Shuffle layout   Same percents, new arrangement.
+  New layout on every load   Off by default.
+  Reset all settings         Everything back to vanilla.
+
+
+UNINSTALL
+---------
+Disable Art Mixer and Art Mixer Packs. Items you picked up while they showed a
+pack's name keep that name; everything else returns to vanilla.
+
+
+KNOWN ISSUES
+------------
+  - A pack's slider is the share of the art that pack ships, not of every object of that kind. A
+    magazine pack that covers 59 of the game's 135 magazine covers set to 50 changes about a quarter
+    of all magazines.
+  - The first seconds after a load can stutter while the game's own textures are read from its
+    archives for Vanilla picks, more with the High Resolution Texture Pack installed.
+  - Apply all saves the game as ArtMixerApply and reloads it; a save made at that moment is part of the
+    design.
+  - Converting a different set of mods resets every setting, and the game reloads once at the next
+    start to show the reset ("packs changed, settings reset; reloading").
+  - Untested on Fallout 4 VR.
+
+
+TROUBLESHOOTING
+---------------
+  - Random Main Menu plays something other than your pick: its box in the Main menu page is on with a
+    Rotate switch, which is the draw working as set. With the box off, the log carries
+    "Random Main Menu's menu calls hooked"; a line ending "stay in control of the menu" means the
+    plugin could not take the menu over on your game version, so send the log.
+  - While ALR.esp (Automated Loading Screen Replacer) is active, the loading screens are left to ALR: the
+    Loading screens sliders have no effect and magazine cover packs do not appear on the loading screen
+    magazine. Everything else works as usual.
+  - Files missing or damaged: the game names them at startup. Open the converter: under Mod Organizer 2 it
+    restores them; otherwise reinstall Art Mixer.
+  - Log file: Documents\My Games\Fallout4\F4SE\ArtMixer.log

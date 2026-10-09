@@ -1,6 +1,6 @@
 #pragma once
 
-namespace ADT::Catalog
+namespace ArtMixer::Catalog
 {
 	struct Slot
 	{
@@ -12,7 +12,7 @@ namespace ADT::Catalog
 		std::string model;    // for an object slot ("&"): the object's game model, lowercase, relative to Meshes
 	};
 
-	// Loads Data\ADT\vanilla-slots.json.
+	// Loads Data\ArtMixer\vanilla-slots.json.
 	bool Load();
 	// Resolves the object slots ("&" plugin file ":" hex id) to the running load order's form ids; call once the game data is loaded.
 	void ResolveForms();

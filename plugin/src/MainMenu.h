@@ -1,12 +1,12 @@
 #pragma once
 
-namespace ADT::MainMenu
+namespace ArtMixer::MainMenu
 {
 	struct Option
 	{
 		std::string name;
-		std::string video;  // relative to the game folder, e.g. Data\Video\ADT\Packs\x\MainMenuLoop.bk2; empty means vanilla
-		std::string music;  // menu theme relative to Data\Music, e.g. ADT\1a2b3c4d.xwm; empty means vanilla
+		std::string video;  // relative to the game folder, e.g. Data\Video\ArtMixer\Packs\x\MainMenuLoop.bk2; empty means vanilla
+		std::string music;  // menu theme relative to Data\Music, e.g. ArtMixer\1a2b3c4d.xwm; empty means vanilla
 		bool immersive{ false };   // an Immersive Main Menus menu, shown only while its box is on
 		std::string musicSource;   // the file the music is copied from before it plays (Immersive Main Menus names are too long for the theme path), empty for none
 	};
@@ -55,7 +55,7 @@ namespace ADT::MainMenu
 	[[nodiscard]] int PickSlot(List a_list);
 	// Vanilla and every pack with a menu video or theme, as Random Main Menu entries are written from them.
 	[[nodiscard]] std::vector<MenuFile> PackMenuFiles();
-	// The plugin's own state file (Data\ADT\state.json) as an object, empty when missing.
+	// The plugin's own state file (Data\ArtMixer\state.json) as an object, empty when missing.
 	[[nodiscard]] nlohmann::json LoadState();
 	void StoreState(const nlohmann::json& a_state);
 	// True once the intro videos are over and the main menu is showing its loop video.

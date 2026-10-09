@@ -1,6 +1,6 @@
 #pragma once
 
-namespace ADT::Engine
+namespace ArtMixer::Engine
 {
 	using ModelLoadedCallback = void (*)(const char* a_modelPath, RE::NiAVObject* a_root);
 	using Reference3DCallback = void (*)(RE::TESObjectREFR* a_ref, RE::NiAVObject* a_root);
@@ -21,14 +21,14 @@ namespace ADT::Engine
 	bool InstallReferenceHook(Reference3DCallback a_callback);
 	// Installs the TESObjectREFR::GetTESModel hook through which a reference loads a pack's replacement model.
 	bool InstallModelHook(ModelChooser a_chooser);
-	// Hooks the game's calls that apply a placed object's material swap to its 3D, so a swap ADT made from a reference's own
+	// Hooks the game's calls that apply a placed object's material swap to its 3D, so a swap ArtMixer made from a reference's own
 	// swap is applied in place of that swap.
 	bool InstallSwapApplyHook();
-	// Records that the swap ADT made carries the entries of a_source, a reference's own swap.
+	// Records that the swap ArtMixer made carries the entries of a_source, a reference's own swap.
 	void NoteFoldedSwap(const RE::BGSMaterialSwap* a_made, const RE::BGSMaterialSwap* a_source);
-	// The number of times a swap ADT made was applied in place of a reference's own swap.
+	// The number of times a swap ArtMixer made was applied in place of a reference's own swap.
 	[[nodiscard]] std::size_t FoldedSwapsApplied();
-	// True once the swap calls are hooked, so a reference's own swap can be folded into the swap ADT gives its model.
+	// True once the swap calls are hooked, so a reference's own swap can be folded into the swap ArtMixer gives its model.
 	[[nodiscard]] bool ReferenceSwapsFold();
 	// The file (relative to the game folder, like the request) an interface movie request opens instead, or empty.
 	using MovieRedirector = std::string (*)(std::string_view a_url);

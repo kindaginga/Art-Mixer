@@ -13,7 +13,7 @@
 #include <Zydis/Zydis.h>
 #pragma warning(pop)
 
-namespace ADT::Engine
+namespace ArtMixer::Engine
 {
 	namespace
 	{
@@ -67,7 +67,7 @@ namespace ADT::Engine
 		std::atomic<int> s_foldedLogs{ 0 };
 		std::atomic<bool> s_swapApplyHooked{ false };
 
-		// Applies the model's swap in place of the reference's own swap when the model's swap is one ADT made with that swap's entries in it.
+		// Applies the model's swap in place of the reference's own swap when the model's swap is one ArtMixer made with that swap's entries in it.
 		std::uintptr_t HookedApplySwap(RE::NiAVObject* a_root, RE::BGSModelMaterialSwap* a_model, RE::BGSMaterialSwap* a_refSwap, void* a_arg4, std::uintptr_t a_arg5)
 		{
 			if (a_refSwap && a_model && a_model->swapForm) {
