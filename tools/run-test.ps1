@@ -69,7 +69,7 @@ function Get-ApplyState([string[]] $lines, [string] $stage) {
 
 $harness = Read-Harness $harnessIni
 if (-not $harness.Enabled) { throw "no [AutoTest] bEnabled=1 in $harnessIni; run rt6.py first" }
-if (@("", "sliders", "mcm", "applynow", "loadscreens", "mainmenu", "reset") -notcontains $harness.Mode) { throw "unknown sMode '$($harness.Mode)' in $harnessIni" }
+if (@("", "sliders", "mcm", "applynow", "loadscreens", "mainmenu", "reset", "scene") -notcontains $harness.Mode) { throw "unknown sMode '$($harness.Mode)' in $harnessIni" }
 $modeName = if ($harness.Mode) { $harness.Mode } else { "place" }
 
 Close-TestMo2
@@ -221,6 +221,7 @@ try {
             if (-not $last -or $last.Matches[0].Groups[1].Value -ne $last.Matches[0].Groups[2].Value) { $failures.Add("not every load ran") }
         }
         "" { if (-not ($log -match 'autotest: A2 \(placed items\): models seen')) { $failures.Add("the placed items were never photographed") } }
+        "scene" { if (-not ($log -match 'autotest: scene done: \d+ objects placed, \d+ failed')) { $failures.Add("the scene script did not run to its end") } }
     }
 
     if ($failures.Count -gt 0) {

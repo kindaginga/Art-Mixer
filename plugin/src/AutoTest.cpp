@@ -11,6 +11,7 @@
 
 #include <cmath>
 #include <set>
+#include <sstream>
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -29,6 +30,7 @@ namespace ArtMixer::AutoTest
 		bool s_anyKey{ true };     // click once as the "press any button" step
 		std::string s_consoleAfterA;  // console command issued in game after stage A
 		std::string s_place;          // comma-separated base form ids placed in front of the player at stage A2 (two frames when empty)
+		std::string s_scene;          // path of the scene script the "scene" mode runs
 		std::string s_swapProbe;      // "base hex|material|replacement": a material swap the model hook gives that object
 		std::set<std::uint32_t> s_watch;  // form ids of game references whose art is logged on arrival and at stage A2
 		int s_placePitch{ 70 };       // camera pitch after the placement, in degrees down
@@ -280,12 +282,12 @@ namespace ArtMixer::AutoTest
 
 		void ClickStage(float a_stageX, float a_stageY);
 
-		void PressScanCode(std::uint16_t a_scanCode)
+		void PressScanCode(std::uint16_t a_scanCode, bool a_extended = false)
 		{
 			INPUT input[2]{};
 			input[0].type = INPUT_KEYBOARD;
 			input[0].ki.wScan = a_scanCode;
-			input[0].ki.dwFlags = KEYEVENTF_SCANCODE;
+			input[0].ki.dwFlags = KEYEVENTF_SCANCODE | (a_extended ? KEYEVENTF_EXTENDEDKEY : 0);
 			input[1] = input[0];
 			input[1].ki.dwFlags |= KEYEVENTF_KEYUP;
 			SendInput(1, &input[0], sizeof(INPUT));
@@ -461,6 +463,7 @@ namespace ArtMixer::AutoTest
 			if (key.find("bpickfirst") != std::string::npos) s_pickFirst = value == "1";
 			if (key.find("sconsoleaftera") != std::string::npos) s_consoleAfterA = value;
 			if (key.find("splace") != std::string::npos) s_place = value;
+			if (key.find("sscene") != std::string::npos) s_scene = value;
 			if (key.find("sswapprobe") != std::string::npos) s_swapProbe = value;
 			if (key.find("swatch") != std::string::npos) {
 				// "id,id,...": game references in hex whose art is logged on arrival and at stage A2.
@@ -752,9 +755,272 @@ namespace ArtMixer::AutoTest
 		}).detach();
 	}
 
+	namespace
+	{
+		struct SceneFrame { float x{ 0 }, y{ 0 }, z{ 0 }, yaw{ 0 }; };
+
+		// Creates one reference of a "Plugin.esm:local id" object at a world position and rotation (degrees), persistent so a save keeps it (game thread).
+		std::uint32_t PlaceSceneObject(const std::string& a_form, const RE::NiPoint3& a_position, const RE::NiPoint3& a_angles)
+		{
+			auto* handler = RE::TESDataHandler::GetSingleton();
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			const auto colon = a_form.rfind(':');
+			if (!handler || !player || colon == std::string::npos) return 0;
+			const auto local = static_cast<std::uint32_t>(std::strtoul(a_form.substr(colon + 1).c_str(), nullptr, 16));
+			auto* form = handler->LookupForm(local, a_form.substr(0, colon));
+			auto* object = form ? form->As<RE::TESBoundObject>() : nullptr;
+			if (!object) {
+				logger::warn("autotest: scene: {} is not a loaded placeable object", a_form);
+				return 0;
+			}
+			RE::NEW_REFR_DATA data;
+			data.location = a_position;
+			data.direction = { a_angles.x * 0.017453292f, a_angles.y * 0.017453292f, a_angles.z * 0.017453292f };
+			data.object = object;
+			auto* cell = player->GetParentCell();
+			data.interior = cell && cell->IsInterior() ? cell : nullptr;
+			data.world = player->GetWorldSpace();
+			data.forcePersist = true;
+			const auto ref = handler->CreateReferenceAtLocation(data).get();
+			return ref ? ref->GetFormID() : 0;
+		}
+
+		// Runs the scene script (sScene): one command per line, positions in a local frame set by "anchor x y z yaw" (yaw a game heading in degrees).
+		// coc <cell>; place <Plugin.esm:id> lx ly lz rx ry rz; cam lx ly lz heading pitch fov (the eye; the player floats there with collision off);
+		// console <command>; wait <seconds>; shot <name>; log; save <name>. Ends with the "scene done" line and quits.
+		void RunScene()
+		{
+			std::ifstream file(s_scene);
+			if (!file) {
+				logger::error("autotest: scene script {} not found", s_scene);
+				Console("qqq");
+				return;
+			}
+			std::this_thread::sleep_for(std::chrono::seconds(8));
+			SceneFrame frame;
+			float eye = 0.0f;
+			float lastEye = 0.0f;
+			int placed = 0, failed = 0;
+			const auto toWorld = [&frame](float a_x, float a_y, float a_z) {
+				const float rad = frame.yaw * 0.017453292f, c = std::cos(rad), s = std::sin(rad);
+				return RE::NiPoint3{ frame.x + a_x * c + a_y * s, frame.y - a_x * s + a_y * c, frame.z + a_z };
+			};
+			std::string line;
+			while (std::getline(file, line)) {
+				if (!line.empty() && line.back() == '\r') line.pop_back();
+				std::istringstream in(line);
+				std::string op;
+				in >> op;
+				if (op.empty() || op[0] == '#') continue;
+				if (op == "anchor") {
+					in >> frame.x >> frame.y >> frame.z >> frame.yaw;
+					logger::info("autotest: scene anchor ({:.1f}, {:.1f}, {:.1f}) yaw {:.1f}", frame.x, frame.y, frame.z, frame.yaw);
+				} else if (op == "coc") {
+					std::string cell;
+					in >> cell;
+					Console("coc " + cell);
+					WaitForLoad();
+					std::this_thread::sleep_for(std::chrono::seconds(4));
+				} else if (op == "place") {
+					std::string form;
+					float lx = 0, ly = 0, lz = 0, rx = 0, ry = 0, rz = 0;
+					in >> form >> lx >> ly >> lz >> rx >> ry >> rz;
+					const auto position = toWorld(lx, ly, lz);
+					const RE::NiPoint3 angles{ rx, ry, rz + frame.yaw };
+					auto result = std::make_shared<std::atomic<int>>(-1);
+					RunOnGameThread([form, position, angles, result] { result->store(PlaceSceneObject(form, position, angles) ? 1 : 0); });
+					for (int i = 0; i < 500 && result->load() < 0; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+					if (result->load() == 1) ++placed;
+					else ++failed;
+				} else if (op == "cam") {
+					float lx = 0, ly = 0, lz = 0, heading = 0, pitch = 0, fov = 70;
+					in >> lx >> ly >> lz >> heading >> pitch >> fov;
+					const auto want = toWorld(lx, ly, lz);
+					lastEye = want.z;
+					Console(fmt::format("player.setpos x {:.1f}", want.x));
+					Console(fmt::format("player.setpos y {:.1f}", want.y));
+					Console(fmt::format("player.setpos z {:.1f}", want.z - eye));
+					Console(fmt::format("player.setangle z {:.1f}", std::fmod(heading + frame.yaw + 720.0f, 360.0f)));
+					Console(fmt::format("player.setangle x {:.1f}", pitch));
+					Console(fmt::format("fov {:.0f}", fov));
+					std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+					// Measures where the first-person camera is against the player's position and corrects the height once.
+					auto camera = std::make_shared<RE::NiPoint3>();
+					auto feet = std::make_shared<RE::NiPoint3>();
+					auto done = std::make_shared<std::atomic<bool>>(false);
+					RunOnGameThread([camera, feet, done] {
+						auto* cam = RE::PlayerCamera::GetSingleton();
+						auto* player = RE::PlayerCharacter::GetSingleton();
+						if (cam && cam->cameraRoot && player) {
+							*camera = cam->cameraRoot->world.translate;
+							*feet = player->data.location;
+						}
+						done->store(true);
+					});
+					for (int i = 0; i < 300 && !done->load(); ++i) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+					logger::info("autotest: scene camera at ({:.1f}, {:.1f}, {:.1f}), wanted ({:.1f}, {:.1f}, {:.1f}), player at z {:.1f}", camera->x, camera->y, camera->z, want.x, want.y, want.z, feet->z);
+					if (std::fabs(camera->z - want.z) > 2.0f) {
+						eye = camera->z - feet->z;
+						Console(fmt::format("player.setpos z {:.1f}", want.z - eye));
+						std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+					}
+				} else if (op == "console") {
+					std::string rest;
+					std::getline(in, rest);
+					rest.erase(0, rest.find_first_not_of(" \t"));
+					Console(rest);
+				} else if (op == "wait") {
+					float seconds = 0;
+					in >> seconds;
+					std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(seconds * 1000)));
+				} else if (op == "shot") {
+					std::string name;
+					in >> name;
+					Console("Screenshot");
+					logger::info("autotest: scene shot {}", name);
+					std::this_thread::sleep_for(std::chrono::seconds(2));
+				} else if (op == "shotfree") {
+					// Detaches the camera where the last cam line put it, drops the player 400 units below it so no hands or body show, shoots, and reattaches.
+					std::string name;
+					in >> name;
+					Console("tfc");
+					std::this_thread::sleep_for(std::chrono::milliseconds(500));
+					Console(fmt::format("player.setpos z {:.1f}", lastEye - eye - 400.0f));
+					std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+					Console("Screenshot");
+					logger::info("autotest: scene shot {}", name);
+					std::this_thread::sleep_for(std::chrono::seconds(2));
+					Console("tfc");
+					// The camera reattaches over a few frames; a heading set before that lands on the free camera instead of the player.
+					std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+				} else if (op == "log") {
+					LogStats("scene");
+					RunOnGameThread(LogPlacedMaterials);
+					std::this_thread::sleep_for(std::chrono::seconds(2));
+				} else if (op == "key") {
+					// Presses a key by scan code (hex) a number of times, the way the game reads its keyboard, for menu navigation such as the Pip-Boy tabs.
+					std::string hex, extended;
+					int count = 1;
+					in >> hex >> count >> extended;
+					for (int i = 0; i < std::max(count, 1); ++i) {
+						PressScanCode(static_cast<std::uint16_t>(std::strtoul(hex.c_str(), nullptr, 16)), extended == "ext");
+						std::this_thread::sleep_for(std::chrono::milliseconds(400));
+					}
+				} else if (op == "fovlog" || op == "fovrestore") {
+					// Logs every FOV setting of the ini collections; the first call keeps the world and first-person values, fovrestore puts them back
+					// with the console's fov command (it tries both argument orders and reports which one restored them).
+					std::string label;
+					in >> label;
+					static float s_world = 0.0f, s_first = 0.0f;
+					// The player camera's runtime values (the save carries these, not the ini settings), kept from the first call and put back by fovrestore.
+					struct CameraFov { float world, first, adjustCurrent, adjustTarget, animator; bool adjust; };
+					static CameraFov s_camera{};
+					static bool s_cameraKept = false;
+					const auto read = [](const char* a_label) {
+						auto result = std::make_shared<std::pair<float, float>>(0.0f, 0.0f);
+						auto done = std::make_shared<std::atomic<bool>>(false);
+						RunOnGameThread([result, done, a_label] {
+							std::string shown;
+							if (auto* cam = RE::PlayerCamera::GetSingleton(); cam) {
+								shown = fmt::format("camera worldFOV={:.1f} firstPersonFOV={:.1f} fovAdjustCurrent={:.2f} fovAdjustTarget={:.2f} fovAnimatorAdjust={:.2f} adjustFOV={}; ini ", cam->worldFOV, cam->firstPersonFOV, cam->fovAdjustCurrent, cam->fovAdjustTarget, cam->fovAnimatorAdjust, cam->adjustFOV);
+								if (!s_cameraKept) {
+									s_camera = { cam->worldFOV, cam->firstPersonFOV, cam->fovAdjustCurrent, cam->fovAdjustTarget, cam->fovAnimatorAdjust, cam->adjustFOV };
+									s_cameraKept = true;
+								}
+							}
+							for (RE::INISettingCollection* collection : { RE::INISettingCollection::GetSingleton(), static_cast<RE::INISettingCollection*>(RE::INIPrefSettingCollection::GetSingleton()) }) {
+								if (!collection) continue;
+								for (auto& setting : collection->settings) {
+									const std::string_view key = setting->GetKey();
+									if (key.find("FOV") == std::string_view::npos) continue;
+									shown += fmt::format("{}{}={:.1f}", shown.empty() ? "" : ", ", key, setting->GetFloat());
+									if (key.starts_with("fDefaultWorldFOV")) result->first = setting->GetFloat();
+									if (key.starts_with("fDefault1stPersonFOV")) result->second = setting->GetFloat();
+								}
+							}
+							logger::info("autotest: scene fov {}: {}", a_label, shown);
+							done->store(true);
+						});
+						for (int i = 0; i < 300 && !done->load(); ++i) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+						return *result;
+					};
+					if (op == "fovlog") {
+						const auto values = read(label.c_str());
+						if (s_world == 0.0f) {
+							s_world = values.first;
+							s_first = values.second;
+						}
+					} else {
+						Console(fmt::format("fov {:.0f} {:.0f}", s_world, s_first));
+						std::this_thread::sleep_for(std::chrono::milliseconds(500));
+						// The camera's own values go back to what the scene found, whatever the console command did with them.
+						RunOnGameThread([] {
+							auto* cam = RE::PlayerCamera::GetSingleton();
+							if (!cam || !s_cameraKept) return;
+							cam->worldFOV = s_camera.world;
+							cam->firstPersonFOV = s_camera.first;
+							cam->fovAdjustCurrent = s_camera.adjustCurrent;
+							cam->fovAdjustTarget = s_camera.adjustTarget;
+							cam->fovAnimatorAdjust = s_camera.animator;
+							cam->adjustFOV = s_camera.adjust;
+						});
+						std::this_thread::sleep_for(std::chrono::milliseconds(500));
+						auto values = read("after fov world first");
+						if (std::fabs(values.first - s_world) > 0.5f || std::fabs(values.second - s_first) > 0.5f) {
+							Console(fmt::format("fov {:.0f} {:.0f}", s_first, s_world));
+							std::this_thread::sleep_for(std::chrono::milliseconds(500));
+							values = read("after fov first world");
+						}
+						logger::info("autotest: scene fov restored to world {:.1f} first {:.1f}: {}", s_world, s_first, std::fabs(values.first - s_world) <= 0.5f && std::fabs(values.second - s_first) <= 0.5f ? "yes" : "no");
+					}
+				} else if (op == "shotnow") {
+					// The Screenshot command issued from this thread at once, for a loading screen, when the game thread's queue stands still.
+					std::string name;
+					in >> name;
+					RE::Console::ExecuteCommand("Screenshot");
+					logger::info("autotest: scene shot {}", name);
+					std::this_thread::sleep_for(std::chrono::milliseconds(200));
+				} else if (op == "shotkey") {
+					// The game's own screenshot key (Print Screen, extended scan code 0x37), for moments the console does not run, such as a loading screen.
+					std::string name;
+					in >> name;
+					PressScanCode(0x37, true);
+					logger::info("autotest: scene shot {}", name);
+					std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+				} else if (op == "pipboy") {
+					// Raises the Pip-Boy through the game's own manager; Tab lowers it again.
+					std::string state;
+					in >> state;
+					if (state == "open") RunOnGameThread([] { if (auto* manager = RE::PipboyManager::GetSingleton(); manager) manager->RaisePipboy(); });
+					else PressScanCode(0x0F);
+					std::this_thread::sleep_for(std::chrono::seconds(1));
+				} else if (op == "load") {
+					std::string name;
+					in >> name;
+					Console("load " + name);
+				} else if (op == "save") {
+					std::string name;
+					in >> name;
+					Console("save " + name);
+					std::this_thread::sleep_for(std::chrono::seconds(15));
+				} else {
+					logger::warn("autotest: scene: unknown command '{}'", op);
+				}
+			}
+			logger::info("autotest: scene done: {} objects placed, {} failed", placed, failed);
+			Console("qqq");
+		}
+	}
+
 	void OnPostLoadGame(bool a_loaded)
 	{
 		if (!s_enabled || s_mode == "mainmenu") return;
+		if (s_mode == "scene") {
+			if (!a_loaded || s_finishIssued.exchange(true)) return;
+			logger::info("autotest: scene mode, script {}", s_scene);
+			std::thread(RunScene).detach();
+			return;
+		}
 		// Slider test on the first share page with two or more packs: every slider is independent, so moving one never moves another,
 		// on its own page or on any other.
 		if (s_mode == "sliders") {
