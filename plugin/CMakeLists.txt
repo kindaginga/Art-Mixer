@@ -52,6 +52,8 @@ set(SOURCES
 	src/LoadScreens.h
 	src/MainMenu.cpp
 	src/MainMenu.h
+	src/MenuRotation.cpp
+	src/MenuRotation.h
 	src/Inventory.cpp
 	src/Inventory.h
 	src/CoreCheck.cpp
