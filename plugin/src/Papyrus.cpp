@@ -4,6 +4,7 @@
 #include "Distributor.h"
 #include "Engine.h"
 #include "MainMenu.h"
+#include "MenuRotation.h"
 #include "Packs.h"
 #include "Settings.h"
 
@@ -85,9 +86,20 @@ namespace ADT::Papyrus
 			return RE::BSFixedString(Packs::Signature());
 		}
 
+		// The main menu list a category names, or nothing for the other categories.
+		[[nodiscard]] std::optional<MainMenu::List> MenuListOf(std::string_view a_category)
+		{
+			if (a_category == "menuthemes") return MainMenu::List::Themes;
+			if (a_category == "menubackgrounds") return MainMenu::List::Backgrounds;
+			if (a_category == "menumusic") return MainMenu::List::Music;
+			return std::nullopt;
+		}
+
 		std::int32_t GetSlotCount(std::monostate, RE::BSFixedString a_category)
 		{
-			return static_cast<std::int32_t>(Packs::SlotsFor(a_category.c_str() ? a_category.c_str() : "").size());
+			const auto category = Settings::NormalizeCategory(a_category.c_str() ? a_category.c_str() : "");
+			if (const auto list = MenuListOf(category)) return MainMenu::ListCount(*list);
+			return static_cast<std::int32_t>(Packs::SlotsFor(category).size());
 		}
 
 		std::int32_t GetStoredSlotCount(std::monostate, RE::BSFixedString a_category)
@@ -111,8 +123,13 @@ namespace ADT::Papyrus
 			};
 			for (const auto& section : Packs::Sections()) {
 				const auto category = Settings::NormalizeCategory(section);
-				const int shown = static_cast<int>(Packs::SlotsFor(category).size());
+				const auto menuList = MenuListOf(category);
+				const int shown = menuList ? MainMenu::ListCount(*menuList) : static_cast<int>(Packs::SlotsFor(category).size());
 				const auto applied = [&](int a_slot) { return a_defaults ? 0 : Settings::Percent(category, a_slot); };
+				if (menuList) {
+					check("iPick:" + section, a_defaults ? 0 : MainMenu::PickSlot(*menuList));
+					continue;
+				}
 				if (category == "pipboyscreen" || category == "pipboyskin" || category == "pipboymap") {
 					int pick = 0;
 					for (int slot = 1; slot <= shown && pick == 0; ++slot) {
@@ -151,16 +168,38 @@ namespace ADT::Papyrus
 			return values;
 		}
 
-		// True when a menu share or pick differs from the settings in effect.
+		// The Main menu page's six switches as MCM ids, in effect or by default, in the order of GetMenuFlagValues.
+		std::vector<std::string> GetMenuFlagIds(std::monostate, bool a_defaults)
+		{
+			std::vector<std::string> ids;
+			for (auto& [id, value] : MenuRotation::FlagValues(a_defaults)) ids.push_back(std::move(id));
+			return ids;
+		}
+
+		std::vector<std::int32_t> GetMenuFlagValues(std::monostate, bool a_defaults)
+		{
+			std::vector<std::int32_t> values;
+			for (const auto& [id, value] : MenuRotation::FlagValues(a_defaults)) values.push_back(value);
+			return values;
+		}
+
+		// True when a menu share, pick or Main menu page switch differs from the settings in effect.
 		bool MenuHasChanges(std::monostate)
 		{
-			return !MenuFixes(false).empty();
+			if (!MenuFixes(false).empty()) return true;
+			const auto menu = Settings::MenuValues();
+			for (const auto& [id, value] : MenuRotation::FlagValues(false)) {
+				const auto it = menu.find(id);
+				if (it != menu.end() && (it->second != 0) != (value != 0)) return true;
+			}
+			return false;
 		}
 
 		// Makes the menu's values the settings in effect.
 		void LoadMenuSettings(std::monostate)
 		{
 			Settings::LoadMenu();
+			MenuRotation::Apply();
 			Distributor::QueueReapply();
 		}
 	}
@@ -188,6 +227,8 @@ namespace ADT::Papyrus
 		a_vm->BindNativeMethod(kScript, "GetMenuFixValues"sv, GetMenuFixValues, true);
 		a_vm->BindNativeMethod(kScript, "MenuHasChanges"sv, MenuHasChanges, true);
 		a_vm->BindNativeMethod(kScript, "LoadMenuSettings"sv, LoadMenuSettings, true);
+		a_vm->BindNativeMethod(kScript, "GetMenuFlagIds"sv, GetMenuFlagIds, true);
+		a_vm->BindNativeMethod(kScript, "GetMenuFlagValues"sv, GetMenuFlagValues, true);
 		logger::info("papyrus: ADT natives registered");
 		return true;
 	}

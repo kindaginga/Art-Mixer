@@ -1,5 +1,6 @@
 #include "Settings.h"
 
+#include "MainMenu.h"
 #include "Packs.h"
 
 namespace ADT::Settings
@@ -35,12 +36,30 @@ namespace ADT::Settings
 		}
 
 		// The slot of the pack a named key ("ipack_<id>" or "bpack_<id>", lowercase) holds in a category's list, 0 for none.
+		// The main menu list a category names, or nothing for the other categories.
+		[[nodiscard]] std::optional<MainMenu::List> MenuListOf(std::string_view a_category)
+		{
+			if (a_category == "menuthemes") return MainMenu::List::Themes;
+			if (a_category == "menubackgrounds") return MainMenu::List::Backgrounds;
+			if (a_category == "menumusic") return MainMenu::List::Music;
+			return std::nullopt;
+		}
+
+		// The ids of a category's slots in slot order: the pack list, or the main menu list's entries (packs and Immersive Main Menus menus).
+		[[nodiscard]] std::vector<std::string> SlotIds(std::string_view a_category)
+		{
+			if (const auto list = MenuListOf(a_category)) return MainMenu::ListIds(*list);
+			std::vector<std::string> ids;
+			for (const auto* pack : Packs::SlotsFor(a_category)) ids.push_back(pack->id);
+			return ids;
+		}
+
 		[[nodiscard]] int SlotOfKey(std::string_view a_category, std::string_view a_key)
 		{
-			const auto& slots = Packs::SlotsFor(a_category);
+			const auto ids = SlotIds(a_category);
 			const auto id = a_key.substr(6);
-			for (std::size_t i = 0; i < slots.size(); ++i) {
-				if (Lower(slots[i]->id) == id) return static_cast<int>(i) + 1;
+			for (std::size_t i = 0; i < ids.size(); ++i) {
+				if (Lower(ids[i]) == id) return static_cast<int>(i) + 1;
 			}
 			return 0;
 		}
@@ -71,6 +90,9 @@ namespace ADT::Settings
 				if (section == "main") {
 					if (key == "bnewlayouteachload") s_values.newLayoutEachLoad = *value != 0;
 					else if (key == "iseed") s_values.seed = *value;
+					++applied;
+				} else if (section == "mainmenu") {
+					s_values.mainMenu[key] = *value;
 					++applied;
 				} else if (key.starts_with("bpack_") || key.starts_with("ipack_")) {
 					// Takes switches (bPack_) only on Other replacers and shares (iPack_) only on the other pages.
@@ -128,9 +150,38 @@ namespace ADT::Settings
 	std::string PackKey(std::string_view a_category, int a_slot)
 	{
 		const auto category = NormalizeCategory(a_category);
-		const auto& slots = Packs::SlotsFor(category);
-		if (a_slot < 1 || a_slot > static_cast<int>(slots.size())) return {};
-		return fmt::format("{}{}", category == "other" ? "bPack_" : "iPack_", slots[a_slot - 1]->id);
+		const auto ids = SlotIds(category);
+		if (a_slot < 1 || a_slot > static_cast<int>(ids.size())) return {};
+		return fmt::format("{}{}", category == "other" ? "bPack_" : "iPack_", ids[a_slot - 1]);
+	}
+
+	int Pick(std::string_view a_category)
+	{
+		std::scoped_lock lock(s_mutex);
+		const auto it = s_values.categories.find(NormalizeCategory(a_category));
+		if (it == s_values.categories.end()) return 0;
+		for (std::size_t i = 0; i < it->second.percent.size(); ++i) {
+			if (it->second.percent[i] == 100) return static_cast<int>(i) + 1;
+		}
+		return 0;
+	}
+
+	void SetPick(std::string_view a_category, int a_slot)
+	{
+		std::scoped_lock lock(s_mutex);
+		auto& percent = s_values.categories[NormalizeCategory(a_category)].percent;
+		std::fill(percent.begin(), percent.end(), 0);
+		if (a_slot >= 1 && a_slot <= kMaxSlots) {
+			if (static_cast<int>(percent.size()) < a_slot) percent.resize(a_slot, 0);
+			percent[a_slot - 1] = 100;
+		}
+	}
+
+	std::optional<int> MainMenuFlag(std::string_view a_key)
+	{
+		std::scoped_lock lock(s_mutex);
+		const auto it = s_values.mainMenu.find(Lower(a_key));
+		return it == s_values.mainMenu.end() ? std::nullopt : std::optional<int>(it->second);
 	}
 
 	std::string MenuKey(std::string_view a_section, int a_slot)
@@ -185,6 +236,7 @@ namespace ADT::Settings
 		s_values = Values{};
 		ApplyIni(MenuDefaultsPath());
 		ApplyIni(MenuPath());
+		s_values.mainMenu["imainmenumodel"] = 1;
 		logger::info("settings: menu values taken over: seed {}, {} categories with values", s_values.seed, s_values.categories.size());
 	}
 
@@ -199,6 +251,13 @@ namespace ADT::Settings
 			const auto applied = AppliedPath();
 			firstStart = !std::filesystem::exists(applied);
 			ApplyIni(firstStart ? MenuPath() : applied);
+			// Main menu page values applied before the boxes started off carry a box the plugin ticked by itself; they start over once.
+			if (!firstStart && !s_values.mainMenu.contains("imainmenumodel")) {
+				s_values.mainMenu.clear();
+				s_values.mainMenu["imainmenumodel"] = 1;
+				logger::info("settings: the Main menu page's switches start over (applied before model 1)");
+			}
+			if (firstStart) s_values.mainMenu["imainmenumodel"] = 1;
 			logger::info("settings: seed {}, {} categories with values", s_values.seed, s_values.categories.size());
 		}
 		// Writes the values just read as the applied settings, before the menu can change its own file.
@@ -211,6 +270,15 @@ namespace ADT::Settings
 		{
 			std::scoped_lock lock(s_mutex);
 			text += fmt::format("[ADT_Main]\nbNewLayoutEachLoad={}\niSeed={}\n", s_values.newLayoutEachLoad ? 1 : 0, s_values.seed);
+			if (!s_values.mainMenu.empty()) {
+				// The keys as the Main menu page spells them; a key the page does not have keeps its lowercase spelling.
+				static const std::map<std::string, std::string> s_spelling{ { "brandommainmenu", "bRandomMainMenu" }, { "bimmersivemainmenus", "bImmersiveMainMenus" }, { "bimmersiveonly", "bImmersiveOnly" }, { "brotatethemes", "bRotateThemes" }, { "brotatebackgrounds", "bRotateBackgrounds" }, { "brotatemusic", "bRotateMusic" }, { "imainmenumodel", "iMainMenuModel" } };
+				text += "\n[ADT_MainMenu]\n";
+				for (const auto& [key, value] : s_values.mainMenu) {
+					const auto spelled = s_spelling.find(key);
+					text += fmt::format("{}={}\n", spelled == s_spelling.end() ? key : spelled->second, value);
+				}
+			}
 			for (const auto& [category, settings] : s_values.categories) {
 				text += fmt::format("\n[{}{}]\n", kSectionPrefix, category);
 				for (int i = 0; i < static_cast<int>(settings.percent.size()); ++i) {

@@ -453,7 +453,7 @@ namespace ADT::GameArchives
 				const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
 				Engine::Perf::Add(Engine::Perf::Kind::kArchiveRead, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count(), _name, _data ? _data->size() : 0);
 				if (!_data) logger::error("game archives: {} could not be read from {}", _name, _file.archive->path.filename().string());
-				else if ((_file.entry->general ? s_modelLogs : s_logs).fetch_add(1) < 40) logger::info("game archives: {} read from {} ({} bytes, {} ms)", _name, _file.archive->path.filename().string(), _data->size(), ms);
+				else if ((_file.entry->general ? s_modelLogs : s_logs).fetch_add(1) < 40 || _name.find("backside") != std::string::npos) logger::info("game archives: {} read from {} ({} bytes, {} ms)", _name, _file.archive->path.filename().string(), _data->size(), ms);
 				return _data != nullptr;
 			}
 
@@ -476,7 +476,12 @@ namespace ADT::GameArchives
 				auto relative = Alias(a_path);
 				if (relative.empty() || a_writable) return ErrorCode::kNotExist;
 				auto file = Find(relative);
-				if (!file.entry) return ErrorCode::kNotExist;
+				if (!file.entry) {
+#ifdef ADT_AUTOTEST
+					logger::info("autotest: game archive file not served: '{}'", a_path ? a_path : "");
+#endif
+					return ErrorCode::kNotExist;
+				}
 				(new GameStream(std::move(file), std::move(relative), a_path, 0, nullptr))->HandTo(a_result);
 				a_location = this;
 				return ErrorCode::kNone;
@@ -533,7 +538,8 @@ namespace ADT::GameArchives
 			if (s_source && s_source->DoCreateStream(a_path, a_result, a_location, a_writable, a_traverser) == ErrorCode::kNone) return ErrorCode::kNone;
 			const auto table = *reinterpret_cast<const std::uintptr_t*>(a_self);
 			for (int i = 0; i < s_gameSourceCount; ++i) {
-				if (s_gameSources[i].table == table) return s_gameSources[i].original(a_self, a_path, a_result, a_location, a_writable, a_traverser);
+				if (s_gameSources[i].table != table) continue;
+				return s_gameSources[i].original(a_self, a_path, a_result, a_location, a_writable, a_traverser);
 			}
 			return ErrorCode::kNotExist;
 		}

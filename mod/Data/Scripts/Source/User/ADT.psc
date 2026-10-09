@@ -60,3 +60,9 @@ bool Function MenuHasChanges() global native
 
 ; Makes the menu's values the settings in effect.
 Function LoadMenuSettings() global native
+
+; MCM ids of the Main menu page's six switches, in effect or by default, in the order of GetMenuFlagValues.
+string[] Function GetMenuFlagIds(bool abDefaults) global native
+
+; The values GetMenuFlagIds's ids get (0 off, 1 on), in the same order.
+int[] Function GetMenuFlagValues(bool abDefaults) global native

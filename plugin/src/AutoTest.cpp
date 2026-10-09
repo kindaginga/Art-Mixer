@@ -1,9 +1,12 @@
 #include "AutoTest.h"
 
+#include "ApplyNow.h"
+
 #include "Distributor.h"
 #include "Engine.h"
 #include "LoadScreens.h"
 #include "MainMenu.h"
+#include "MenuRotation.h"
 #include "Settings.h"
 
 #include <cmath>
@@ -713,6 +716,7 @@ namespace ADT::AutoTest
 				}
 				Console("Screenshot");
 				RunOnGameThread([] { logger::info("autotest: main menu {}", MainMenu::EntryState()); });
+				logger::info("autotest: names hidden from Random Main Menu so far {}", MenuRotation::HiddenCount());
 				if (s_pickFirst) {
 					std::this_thread::sleep_for(std::chrono::seconds(1));
 					RunOnGameThread([] { MainMenu::PressEntry(); });
@@ -901,6 +905,40 @@ namespace ADT::AutoTest
 					std::this_thread::sleep_for(std::chrono::seconds(3));
 					Console("qqq");
 				}
+			}).detach();
+			return;
+		}
+		// Reset test: the menu file names a stale pack signature, so the script's startup pass resets the settings and reloads; each
+		// load places the items and logs what they show once no reload is under way, and the last load quits.
+		if (s_mode == "reset") {
+			static std::atomic<int> s_loads{ 0 };
+			if (!a_loaded) return;
+			const auto load = ++s_loads;
+			s_finishIssued.store(true);
+			logger::info("autotest: reset test, load {}", load);
+			std::thread([load] {
+				// The startup pass runs within seconds of the load; the placement waits past it.
+				std::this_thread::sleep_for(std::chrono::seconds(10));
+				if (ApplyNow::Reloading()) {
+					logger::info("autotest: reset test: a reload is under way after load {}", load);
+					for (int i = 0; i < 90; ++i) {
+						std::this_thread::sleep_for(std::chrono::seconds(1));
+						RunOnGameThread([] { ConfirmMessageBox(true); });
+					}
+					return;
+				}
+				for (std::size_t start = 0; start < s_place.size();) {
+					const auto comma = s_place.find(',', start);
+					Console(fmt::format("player.placeatme {} 1", ResolvePlace(s_place.substr(start, comma == std::string::npos ? std::string::npos : comma - start))));
+					start = comma == std::string::npos ? s_place.size() : comma + 1;
+				}
+				Console("player.setangle x 70");
+				std::this_thread::sleep_for(std::chrono::seconds(4));
+				RunOnGameThread(LogPlacedMaterials);
+				LogStats(fmt::format("reset test, load {}", load).c_str());
+				Console("Screenshot");
+				std::this_thread::sleep_for(std::chrono::seconds(3));
+				Console("qqq");
 			}).detach();
 			return;
 		}

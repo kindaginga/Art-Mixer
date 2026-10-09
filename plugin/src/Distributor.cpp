@@ -402,10 +402,13 @@ namespace ADT::Distributor
 			for (const auto& [material, entry] : entries) {
 				if (std::find(a_use.materials.begin(), a_use.materials.end(), material) == a_use.materials.end()) pick(material, material);
 			}
+			// A back shows the cover's pack's version of it, the vanilla pack's copy included: the game's own material file would load a loose replacer's texture.
 			for (const auto& [from, slot] : backs) {
-				const auto* image = coverPack && !coverPack->vanilla ? ExactImage(*coverPack, *slot, Hash(fmt::format("{}|{}|{}", a_identity, slot->material, values.seed))) : nullptr;
+				const auto* image = coverPack ? ExactImage(*coverPack, *slot, Hash(fmt::format("{}|{}|{}", a_identity, slot->material, values.seed))) : nullptr;
 				if (!image) continue;
-				entries[from] = { Catalog::NormalizeMaterialPath(image->material), kNoColorRemap };
+				const auto target = Catalog::NormalizeMaterialPath(image->material);
+				if (target == from) continue;
+				entries[from] = { target, kNoColorRemap };
 				changed = true;
 			}
 			return changed ? SwapWith(entries) : nullptr;
@@ -468,6 +471,11 @@ namespace ADT::Distributor
 		if (!use || (refOwn && !Engine::ReferenceSwapsFold())) return image ? Engine::ModelChoice{ image->material, swap } : Engine::ModelChoice{};
 		auto* made = PickSwap("ref:" + Catalog::ReferenceKey(identityForm), *use, { own, refOwn });
 		if (made && refOwn) Engine::NoteFoldedSwap(made, refOwn);
+		if (made && Engine::ModelTracing()) {
+			std::string entries;
+			for (const auto& [from, entry] : made->swapMap) entries += fmt::format("; {} -> {}", from.c_str(), entry.swapMaterial.c_str());
+			logger::info("reference {:08X} (base {:08X}): picks swap {:08X}{}", a_refFormID, a_baseFormID, made->GetFormID(), entries);
+		}
 		if (refOwn && made && s_refSwapLogs.fetch_add(1) < 40) {
 			std::string entries;
 			for (const auto& [from, entry] : made->swapMap) entries += fmt::format("; {} -> {}", from.c_str(), entry.swapMaterial.c_str());
@@ -788,9 +796,9 @@ namespace ADT::Distributor
 				if (name.starts_with('@') && s_inlineLogs.fetch_add(1) < 20) logger::info("reference {:08X}: model shader {} -> {}", a_formID, name, wanted);
 			}
 		});
-		// Each back shows the cover's pack's version of that back material, or stays the game's own.
+		// Each back shows the cover's pack's version of that back material, the vanilla pack's copy included.
 		for (const auto& [geometry, slot] : backs) {
-			const auto* image = coverPack && !coverPack->vanilla ? ExactImage(*coverPack, *slot, Hash(fmt::format("{}|{}|{}", identity, slot->material, values.seed))) : nullptr;
+			const auto* image = coverPack ? ExactImage(*coverPack, *slot, Hash(fmt::format("{}|{}|{}", identity, slot->material, values.seed))) : nullptr;
 			if (!image) continue;
 			const auto wanted = "Materials\\" + image->material;
 			if (Engine::ApplyMaterial(geometry, wanted)) {

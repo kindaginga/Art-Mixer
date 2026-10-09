@@ -27,6 +27,7 @@ Function Register()
 	RegisterForExternalEvent("OnMCMMenuOpen|" + ModName, "OnMCMMenuOpen")
 	RegisterForExternalEvent("OnMCMMenuClose|" + ModName, "OnMCMMenuClose")
 	RegisterForExternalEvent("OnMCMClose", "OnMCMClose")
+	RegisterForExternalEvent("OnMCMSettingChange|" + ModName, "OnMCMSettingChange")
 	Debug.Trace("ADT: Config registered; plugin ready " + ADT.IsReady() + ", plugin version " + ADT.GetVersion())
 	CheckPackSignature()
 	CleanHiddenSlots()
@@ -105,14 +106,21 @@ Function CheckPackSignature()
 			Debug.Notification("Art Distribution Tool: packs changed, settings reset, not stored.")
 			Return
 		EndIf
-		Debug.Notification("Art Distribution Tool: packs changed, settings reset.")
+		MCM.SetModSettingString(ModName, "sPackSignature:ADT_Main", current)
+		; Art already loaded keeps the shares it loaded under, so the reset reloads the game as Apply all does.
+		Debug.Notification("Art Distribution Tool: packs changed, settings reset; reloading.")
+		Debug.Trace("ADT: pack signature changed from " + stored + " to " + current + "; settings reset and the game reloads")
+		ADT.ReloadNow()
+		Return
 	EndIf
 	MCM.SetModSettingString(ModName, "sPackSignature:ADT_Main", current)
 EndFunction
 
-; Every menu value to its default: every slider 0 (all vanilla), Pip-Boy picks to Vanilla, new layout on every load off, seed 1.
+; Every menu value to its default: every slider 0 (all vanilla), Pip-Boy and main menu picks to Vanilla, new layout on every load off, seed 1,
+; the Main menu page's boxes as the plugin found their mods and its switches off.
 Function ResetToDefaults()
 	SetMenuFixes(true)
+	SetMenuFlags(true)
 	MCM.SetModSettingBool(ModName, "bNewLayoutEachLoad:ADT_Main", false)
 	MCM.SetModSettingInt(ModName, "iSeed:ADT_Main", 1)
 	MCM.RefreshMenu()
@@ -127,7 +135,37 @@ EndFunction
 
 ; The Pip-Boy and World map pages hold one list per category instead of sliders: iPick is 0 for Vanilla or the slot number of the chosen pack.
 bool Function IsPick(string asCategory)
-	Return asCategory == "ADT_PipBoyScreen" || asCategory == "ADT_PipBoySkin" || asCategory == "ADT_PipBoyMap"
+	Return asCategory == "ADT_PipBoyScreen" || asCategory == "ADT_PipBoySkin" || asCategory == "ADT_PipBoyMap" || asCategory == "ADT_MenuThemes" || asCategory == "ADT_MenuBackgrounds" || asCategory == "ADT_MenuMusic"
+EndFunction
+
+; Sets the Main menu page's six switches to the values in effect, or to their defaults.
+Function SetMenuFlags(bool abDefaults)
+	string[] ids = ADT.GetMenuFlagIds(abDefaults)
+	int[] values = ADT.GetMenuFlagValues(abDefaults)
+	int i = 0
+	While i < ids.Length && i < values.Length
+		If MCM.GetModSettingBool(ModName, ids[i]) != (values[i] != 0)
+			MCM.SetModSettingBool(ModName, ids[i], values[i] != 0)
+		EndIf
+		i += 1
+	EndWhile
+EndFunction
+
+; MCM sends this with the mod name and the setting id when the player changes a value: Rotate themes stands alone, so it and the
+; other two rotate switches turn each other off.
+Function OnMCMSettingChange(string asModName, string asID)
+	If asID == "bRotateThemes:ADT_MainMenu"
+		If MCM.GetModSettingBool(ModName, asID)
+			MCM.SetModSettingBool(ModName, "bRotateBackgrounds:ADT_MainMenu", false)
+			MCM.SetModSettingBool(ModName, "bRotateMusic:ADT_MainMenu", false)
+			MCM.RefreshMenu()
+		EndIf
+	ElseIf asID == "bRotateBackgrounds:ADT_MainMenu" || asID == "bRotateMusic:ADT_MainMenu"
+		If MCM.GetModSettingBool(ModName, asID)
+			MCM.SetModSettingBool(ModName, "bRotateThemes:ADT_MainMenu", false)
+			MCM.RefreshMenu()
+		EndIf
+	EndIf
 EndFunction
 
 ; The list choice in effect: the slot the plugin has at 100, or 0 for Vanilla.
@@ -208,6 +246,7 @@ Function RevertToApplied()
 		MCM.SetModSettingBool(ModName, "bNewLayoutEachLoad:ADT_Main", ADT.GetNewLayoutEachLoad())
 	EndIf
 	SetMenuInt("iSeed:ADT_Main", ADT.GetSeed())
+	SetMenuFlags(false)
 	PendingMenuReset = false
 	MCM.RefreshMenu()
 	Debug.Trace("ADT: menu back to the settings in effect, " + changed + " values set")

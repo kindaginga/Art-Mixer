@@ -69,7 +69,7 @@ function Get-ApplyState([string[]] $lines, [string] $stage) {
 
 $harness = Read-Harness $harnessIni
 if (-not $harness.Enabled) { throw "no [AutoTest] bEnabled=1 in $harnessIni; run rt6.py first" }
-if (@("", "sliders", "mcm", "applynow", "loadscreens", "mainmenu") -notcontains $harness.Mode) { throw "unknown sMode '$($harness.Mode)' in $harnessIni" }
+if (@("", "sliders", "mcm", "applynow", "loadscreens", "mainmenu", "reset") -notcontains $harness.Mode) { throw "unknown sMode '$($harness.Mode)' in $harnessIni" }
 $modeName = if ($harness.Mode) { $harness.Mode } else { "place" }
 
 Close-TestMo2
@@ -102,6 +102,9 @@ $prefs = "$env:USERPROFILE\Documents\My Games\Fallout4\Fallout4Prefs.ini"
 $prefsOriginal = $null
 if ($Direct -and (Test-Path $prefs)) {
     $prefsOriginal = Get-Content $prefs -Raw
+    # Makes the process DPI aware before the screen bounds are read.
+    Add-Type -Namespace Win32 -Name Dpi -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();'
+    [Win32.Dpi]::SetProcessDPIAware() | Out-Null
     $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
     $sized = [regex]::Replace($prefsOriginal, "(?m)^iSize W=[^\r\n]*", "iSize W=$($screen.Width)")
     $sized = [regex]::Replace($sized, "(?m)^iSize H=[^\r\n]*", "iSize H=$($screen.Height)")

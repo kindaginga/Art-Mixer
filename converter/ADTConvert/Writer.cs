@@ -472,6 +472,20 @@ public sealed class Writer
             if (own != null) pack.Images.Add(own);
         }
 
+        // The game's own copy of every interface file a pack replaces, so Vanilla shows the game's file and not the one a still
+        // enabled mod leaves in the mod manager's view.
+        foreach (var (gamePath, _, category) in packs.Where(p => p.Id != "vanilla").SelectMany(p => p.Movies).DistinctBy(m => m.Path.ToLowerInvariant()))
+        {
+            var game = _game.ReadInterface(gamePath);
+            if (game == null)
+            {
+                _report.Warn($"vanilla: the game's own {gamePath} is in none of its archives, so Vanilla leaves that interface file to the mod manager");
+                continue;
+            }
+            var copy = $"Interface\\ADT\\Packs\\vanilla\\{gamePath["interface\\".Length..]}";
+            WriteFile(copy, game);
+            pack.Movies.Add((gamePath, copy, category));
+        }
         if (packs.Any(p => p.Video != null))
         {
             // Copies the game's loose menu video unless it is a converted mod's copy; a mod Vortex deployed over it leaves the game's own as MainMenuLoop.bk2.vortex_backup.
@@ -785,9 +799,9 @@ public sealed class Writer
 
     // The share pages in menu order, their MCM section names and their page titles; the ADT_ prefix keeps Papyrus from
     // recasing the section names (its strings share one case-insensitive cache).
-    private static readonly string[] Categories = ["paintings", "posters", "signage", "magazines", "quest", "mixed", "other", "pipboyscreen", "pipboyskin", "pipboymap", "loadingscreens"];
-    private static readonly string[] Titles = ["ADT_Paintings", "ADT_Posters", "ADT_Signage", "ADT_Magazines", "ADT_Quest", "ADT_Mixed", "ADT_Other", "ADT_PipBoyScreen", "ADT_PipBoySkin", "ADT_PipBoyMap", "ADT_LoadingScreens"];
-    private static readonly string[] PageTitles = ["Paintings", "Posters", "Signage", "Magazines", "Quest", "Mixed packs", "Other replacers", "Pip-Boy screen", "Pip-Boy skin", "World map", "Loading screens"];
+    private static readonly string[] Categories = ["paintings", "posters", "signage", "magazines", "quest", "mixed", "other", "pipboyscreen", "pipboyskin", "pipboymap", "loadingscreens", "menuthemes", "menubackgrounds", "menumusic"];
+    private static readonly string[] Titles = ["ADT_Paintings", "ADT_Posters", "ADT_Signage", "ADT_Magazines", "ADT_Quest", "ADT_Mixed", "ADT_Other", "ADT_PipBoyScreen", "ADT_PipBoySkin", "ADT_PipBoyMap", "ADT_LoadingScreens", "ADT_MenuThemes", "ADT_MenuBackgrounds", "ADT_MenuMusic"];
+    private static readonly string[] PageTitles = ["Paintings", "Posters", "Signage", "Magazines", "Quest", "Mixed packs", "Other replacers", "Pip-Boy screen", "Pip-Boy skin", "World map", "Loading screens", "Main menu", "Main menu", "Main menu"];
 
     /// <summary>Locations with game files of their own: the folder their art sits in, the plugin their records come from and the page heading.</summary>
     private static readonly (string Folder, string Plugin, string Name)[] Locations = [("dlc03", "dlccoast.esm", "Far Harbor"), ("dlc04", "dlcnukaworld.esm", "Nuka-World")];
@@ -840,11 +854,16 @@ public sealed class Writer
     }
 
     /// <summary>The packs a page or list shows, in slot order: a page lists the packs whose one control sits on it; loading screens
-    /// every pack with magazine covers; the Pip-Boy lists every pack with something for them.</summary>
+    /// every pack with magazine covers; the Pip-Boy lists every pack with something for them; the Main menu lists every pack with a
+    /// menu video and theme (Themes), a menu video (Backgrounds) or a theme (Music), as the MENU ART entry lists them.</summary>
     private static List<PackOutput> Eligible(List<PackOutput> packs, string category) =>
-        packs.Where(p => p.Id != "vanilla" && (ArtPages.Contains(category) || category == MixedPage
-            ? MainPage(p) == category
-            : p.Covers(category) || (category == "loadingscreens" && p.Images.Any(i => i.IsCover)))).ToList();
+        packs.Where(p => p.Id != "vanilla" && category switch
+        {
+            "menuthemes" => p.Video != null && p.Music != null,
+            "menubackgrounds" => p.Video != null,
+            "menumusic" => p.Music != null,
+            _ => ArtPages.Contains(category) || category == MixedPage ? MainPage(p) == category : p.Covers(category) || (category == "loadingscreens" && p.Images.Any(i => i.IsCover)),
+        }).ToList();
 
     /// <summary>True for a slot (a material, or a material swap entry's material) that is one of the game's magazine backs: the back
     /// folders of the magazine materials, and the comic and journal materials named for their back (Props\Grognak\GrognakAprilBackPrewar
@@ -1030,6 +1049,11 @@ public sealed class Writer
         {
             new { type = "text", text = "Pick a pack, or Vanilla.", html = false },
         };
+        // The Main menu page: the MENU ART entry's three lists, then the Random Main Menu box with what it adds.
+        var menuContent = new List<object>
+        {
+            new { type = "text", text = "Pick a pack, or Vanilla.", html = false },
+        };
         foreach (var pack in packs.Where(p => p.Id != "vanilla" && MainPage(p).Length > 0 && ArtPages.Count(page => OnPage(p, page) > 0) > 1))
         {
             _report.Info($"{pack.Name}: its {(MainPage(pack) == "other" ? "switch" : "slider")} sits on {PageTitles[Array.IndexOf(Categories, MainPage(pack))]} and sets its {Reach(pack)}");
@@ -1039,7 +1063,7 @@ public sealed class Writer
         {
             var index = Array.IndexOf(Categories, category);
             var sectionName = SectionTitle(category);
-            var pick = category.StartsWith("pipboy", StringComparison.Ordinal);
+            var pick = category.StartsWith("pipboy", StringComparison.Ordinal) || category.StartsWith("menu", StringComparison.Ordinal);
             // Loading screens show a pack's covers on the game's magazine, so every pack with covers has a share there (the plugin orders them the same way).
             var loading = category == "loadingscreens";
             var eligible = Eligible(packs, category);
@@ -1059,9 +1083,16 @@ public sealed class Writer
             if (pick)
             {
                 settings.Append("iPick=0\n");
-                if (slots.Count == 0) continue;
                 var options = new List<string> { "Vanilla" };
                 options.AddRange(slots.Select(p => p.Name));
+                if (category.StartsWith("menu", StringComparison.Ordinal))
+                {
+                    // A list stays with Vanilla alone, so the page is always there; the plugin adds Immersive Main Menus' menus to it in game.
+                    var name = category switch { "menuthemes" => "Themes", "menubackgrounds" => "Backgrounds", _ => "Music" };
+                    menuContent.Add(new { id = $"iPick:{sectionName}", type = "dropdown", text = name, help = Report.Count(slots.Count, "pack", "packs"), groupCondition = new { NOT = new[] { 3 } }, groupBehavior = "disable", valueOptions = new { options = options.ToArray(), sourceType = "ModSettingInt" } });
+                    continue;
+                }
+                if (slots.Count == 0) continue;
                 var label = category switch { "pipboyscreen" => "Screen background", "pipboyskin" => "Skin", _ => "World map" };
                 (category == "pipboymap" ? mapContent : pipboyContent).Add(new { id = $"iPick:{sectionName}", type = "dropdown", text = label, help = Report.Count(slots.Count, "pack", "packs"), valueOptions = new { options = options.ToArray(), sourceType = "ModSettingInt" } });
                 continue;
@@ -1093,6 +1124,18 @@ public sealed class Writer
             }
             pages.Add(new { pageDisplayName = PageTitles[index], content = page });
         }
+        // Random Main Menu (Nexus 74187) and Immersive Main Menus (Nexus 82077): each box is set by the plugin when it finds the mod at
+        // game start; what a box adds shows only while it is on. The settings default to off until the plugin sets them.
+        var rotate = new { AND = new object[] { 1, new { NOT = new[] { 3 } } } };
+        menuContent.Add(new { type = "section", text = "Random Main Menu" });
+        menuContent.Add(new { id = "bRandomMainMenu:ADT_MainMenu", type = "switcher", text = "Random Main Menu", help = "Found at game start. On: your packs join its draw.", groupControl = 1, valueOptions = new { sourceType = "ModSettingBool" } });
+        menuContent.Add(new { id = "bImmersiveMainMenus:ADT_MainMenu", type = "switcher", text = "Immersive Main Menus", help = "Found at game start. On: its menus join the lists and the draw.", groupControl = 2, groupCondition = 1, groupBehavior = "hide", valueOptions = new { sourceType = "ModSettingBool" } });
+        menuContent.Add(new { id = "bImmersiveOnly:ADT_MainMenu", type = "switcher", text = "Immersive Main Menus only", help = "Random Main Menu draws from Immersive Main Menus alone; the picks above stay out.", groupControl = 3, groupCondition = 2, groupBehavior = "hide", valueOptions = new { sourceType = "ModSettingBool" } });
+        menuContent.Add(new { id = "bRotateThemes:ADT_MainMenu", type = "switcher", text = "Rotate themes", help = "Random Main Menu draws a background with its music at each menu.", groupCondition = rotate, groupBehavior = "hide", valueOptions = new { sourceType = "ModSettingBool" } });
+        menuContent.Add(new { id = "bRotateBackgrounds:ADT_MainMenu", type = "switcher", text = "Rotate backgrounds", help = "Random Main Menu draws a background at each menu; the Music pick stays.", groupCondition = rotate, groupBehavior = "hide", valueOptions = new { sourceType = "ModSettingBool" } });
+        menuContent.Add(new { id = "bRotateMusic:ADT_MainMenu", type = "switcher", text = "Rotate music", help = "Random Main Menu draws music at each menu; the Backgrounds pick stays.", groupCondition = rotate, groupBehavior = "hide", valueOptions = new { sourceType = "ModSettingBool" } });
+        settings.Append("\n[ADT_MainMenu]\nbRandomMainMenu=0\nbImmersiveMainMenus=0\nbImmersiveOnly=0\nbRotateThemes=0\nbRotateBackgrounds=0\nbRotateMusic=0\n");
+        pages.Insert(0, new { pageDisplayName = "Main menu", content = menuContent.ToArray() });
         if (pipboyContent.Count > 1) pages.Add(new { pageDisplayName = "Pip-Boy", content = pipboyContent.ToArray() });
         if (mapContent.Count > 1) pages.Add(new { pageDisplayName = "World map", content = mapContent.ToArray() });
         var config = new

@@ -12,6 +12,7 @@
 #include "Inventory.h"
 #include "LoadScreens.h"
 #include "MainMenu.h"
+#include "MenuRotation.h"
 #include "Packs.h"
 #include "Papyrus.h"
 #include "Settings.h"
@@ -58,6 +59,9 @@ namespace
 	{
 		if (!a_message) return;
 		switch (a_message->type) {
+		case F4SE::MessagingInterface::kPostLoad:
+			ADT::MenuRotation::OnPluginsLoaded();
+			break;
 		case F4SE::MessagingInterface::kGameDataReady:
 			ADT::CoreCheck::OnGameDataReady();
 			ADT::GameArchives::Install();
@@ -110,7 +114,7 @@ bool Plugin::Initialize(const F4SE::LoadInterface* a_f4se)
 	const bool engine = ADT::Engine::Initialize();
 	ADT::Catalog::Load();
 	ADT::Packs::Load();
-	ADT::Settings::Load();
+	ADT::MenuRotation::Detect();
 	if (engine) {
 		ADT::Engine::InstallHooks(&ADT::Distributor::OnModelLoaded);
 		ADT::Engine::InstallReferenceHook(&ADT::Distributor::OnReference3D);
@@ -122,6 +126,11 @@ bool Plugin::Initialize(const F4SE::LoadInterface* a_f4se)
 	ADT::MainMenu::Install();
 	if (engine) ADT::Engine::InstallMovieHook(&ADT::MainMenu::RedirectMovie);
 	ADT::MainMenu::LoadFromPacks();
+	// The menu lists are built first: the applied settings name their picks by entry.
+	ADT::Settings::Load();
+	ADT::MainMenu::LoadPicks();
+	// Random Main Menu reads its settings file when it loads, after this plugin, so the file is written here and again once its module is known.
+	ADT::MenuRotation::Apply();
 	ADT::AutoTest::Configure();
 
 	F4SE::GetMessagingInterface()->RegisterListener(OnMessage);

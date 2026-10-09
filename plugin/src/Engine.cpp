@@ -90,7 +90,7 @@ namespace ADT::Engine
 		void EnsureTrampoline()
 		{
 			static std::once_flag once;
-			std::call_once(once, [] { F4SE::AllocTrampoline(256); });
+			std::call_once(once, [] { F4SE::AllocTrampoline(512); });
 		}
 		std::atomic<bool> s_tracing{ false };
 		std::atomic<bool> s_modelTracing{ false };
@@ -158,8 +158,11 @@ namespace ADT::Engine
 			const bool inWorld = a_ref->GetParentCell() != nullptr;
 			if (a_log && s_modelTracing.load()) logger::info("engine: model request {:08X} (base {:08X}, {}): {}", a_ref->GetFormID(), baseFormID, inWorld ? "in a cell" : "in no cell", path);
 			const auto choice = s_modelChooser(a_ref->GetFormID(), baseFormID, path, inWorld);
-			if (choice.path.empty()) return model;
-			if (a_log && s_modelLogs.fetch_add(1) < 20) {
+			if (choice.path.empty()) {
+				if (a_log && s_modelTracing.load()) logger::info("engine: model request {:08X} (base {:08X}): no change", a_ref->GetFormID(), baseFormID);
+				return model;
+			}
+			if (a_log && (s_modelLogs.fetch_add(1) < 20 || s_modelTracing.load())) {
 				const auto swap = !choice.swap ? std::string() : *choice.swap ? fmt::format(" with material swap {:08X}", (*choice.swap)->GetFormID()) : std::string(" without its material swap");
 				logger::info("reference {:08X} (base {:08X}): model {} -> {}{}", a_ref->GetFormID(), baseFormID, path, choice.path, swap);
 			}

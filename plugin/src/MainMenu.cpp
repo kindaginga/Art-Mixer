@@ -3,6 +3,7 @@
 #include "ApplyNow.h"
 #include "Distributor.h"
 #include "LoadScreens.h"
+#include "MenuRotation.h"
 #include "Packs.h"
 #include "Settings.h"
 
@@ -27,6 +28,8 @@ namespace ADT::MainMenu
 		std::atomic<bool> s_entryEnabled{ true };   // the list entry is added to the main menu (the autotest baseline turns it off)
 		void AttachToMenu();
 		std::vector<std::string> s_optionIds;
+		std::atomic<bool> s_immersiveShown{ false };  // the Immersive Main Menus menus are in the lists
+		constexpr std::array<std::pair<List, const char*>, 3> kListCategories{ { { List::Themes, "menuthemes" }, { List::Backgrounds, "menubackgrounds" }, { List::Music, "menumusic" } } };
 
 		// The executable names the menu theme by one fixed path; the menu plays whatever file that text names when it starts
 		// the theme, so a pack's theme is chosen by rewriting the text in place (a shorter path ends at its terminator).
@@ -57,13 +60,58 @@ namespace ADT::MainMenu
 			return count == 1 ? found : nullptr;
 		}
 
-		// Points the menu theme at a file relative to Data\Music, or back at the game's own theme when empty.
+		// The theme path the game plays: the value of the setting sMainMenuMusic:General, whose default is the executable's text. The
+		// setting keeps a pointer, so the value lives in a buffer of this plugin's; an INI that sets the key is overridden the same way.
+		char s_themeValue[MAX_PATH]{};
+		std::string s_themeWanted;
+
+		std::atomic<bool> s_themeSet{ false };  // the setting has taken the wanted path at least once
+
+		// Sets the theme setting to the wanted path; false until the setting collection exists.
+		bool ApplyThemeSetting()
+		{
+			if (s_themeWanted.empty() || s_themeWanted.size() >= sizeof(s_themeValue)) return false;
+			auto* collection = RE::INISettingCollection::GetSingleton();
+			auto* setting = collection ? collection->GetSetting("sMainMenuMusic:General") : nullptr;
+			if (!setting) return false;
+			std::memset(s_themeValue, 0, sizeof(s_themeValue));
+			std::memcpy(s_themeValue, s_themeWanted.data(), s_themeWanted.size());
+			setting->SetString(s_themeValue);
+			s_themeSet.store(true);
+			logger::info("mainmenu: setting sMainMenuMusic -> '{}'", s_themeWanted);
+			return true;
+		}
+
+		// The game builds its settings after the plugins load and reads its INI files into them before the menu; the setting is
+		// written the moment it exists, so the first menu already plays the pick whatever an INI names.
+		void WatchForThemeSetting()
+		{
+			std::thread([] {
+				for (int i = 0; i < 1200; ++i) {
+					{
+						std::scoped_lock lock(s_mutex);
+						if (ApplyThemeSetting()) return;
+					}
+					std::this_thread::sleep_for(std::chrono::milliseconds(50));
+				}
+				logger::warn("mainmenu: the setting sMainMenuMusic did not appear within 60 s of the plugin loading");
+			}).detach();
+		}
+
+		// Points the menu theme at a file relative to Data\Music, or back at the game's own theme when empty: the setting's value, and
+		// the executable's default text for a game that has not built its settings yet.
 		void SetTheme(const std::string& a_music)
 		{
-			if (!s_themeText) return;
 			const auto text = a_music.empty() ? std::string(kThemePath) : "\\Data\\Music\\" + a_music;
+			s_themeWanted = text;
+			const bool set = ApplyThemeSetting();
+			if (!set && !s_themeSet.load()) {
+				static std::once_flag s_watch;
+				std::call_once(s_watch, WatchForThemeSetting);
+			}
+			if (!s_themeText) return;
 			if (text.size() > kThemePath.size()) {
-				logger::warn("mainmenu: theme path '{}' is longer than the game's own; the vanilla theme stays", text);
+				if (!set) logger::warn("mainmenu: theme path '{}' is longer than the game's own text and the setting is not up yet; the vanilla theme stays for now", text);
 				return;
 			}
 			DWORD old = 0;
@@ -71,22 +119,16 @@ namespace ADT::MainMenu
 			std::memset(s_themeText, 0, kThemePath.size() + 1);
 			std::memcpy(s_themeText, text.data(), text.size());
 			VirtualProtect(s_themeText, kThemePath.size() + 1, old, &old);
-			logger::info("mainmenu: menu theme -> '{}'", text);
+			logger::info("mainmenu: menu theme text -> '{}'", text);
 		}
 
-		// The three lists of the MENU ART selector.
-		enum class List
-		{
-			Themes,
-			Backgrounds,
-			Music
-		};
-
-		// Indices into s_options a list shows, Vanilla first: themes have a video and music, backgrounds a video, music a theme (caller holds s_mutex).
+		// Indices into s_options a list shows, Vanilla first: themes have a video and music, backgrounds a video, music a theme;
+		// Immersive Main Menus menus only while their box is on (caller holds s_mutex).
 		[[nodiscard]] std::vector<int> ListEntries(List a_list)
 		{
 			std::vector<int> out;
 			for (int i = 0; i < static_cast<int>(s_options.size()); ++i) {
+				if (s_options[i].immersive && !s_immersiveShown.load()) continue;
 				const bool video = !s_options[i].video.empty();
 				const bool music = !s_options[i].music.empty();
 				const bool shown = a_list == List::Themes ? video && music : a_list == List::Backgrounds ? video : music;
@@ -95,12 +137,42 @@ namespace ADT::MainMenu
 			return out;
 		}
 
+		// Makes the short-named copy an option's music plays from, when the option names a source (caller holds s_mutex).
+		void EnsureMusicCopy(const Option& a_option)
+		{
+			if (a_option.musicSource.empty() || a_option.music.empty()) return;
+			const auto copy = std::filesystem::path("Data") / "Music" / a_option.music;
+			std::error_code error;
+			if (std::filesystem::exists(copy, error) && std::filesystem::file_size(copy, error) == std::filesystem::file_size(a_option.musicSource, error)) return;
+			std::filesystem::create_directories(copy.parent_path(), error);
+			if (std::filesystem::copy_file(a_option.musicSource, copy, std::filesystem::copy_options::overwrite_existing, error)) logger::info("mainmenu: '{}' music copied to {}", a_option.name, copy.string());
+			else logger::error("mainmenu: could not copy {} to {}: {}", a_option.musicSource, copy.string(), error.message());
+		}
+
 		// Points the menu video and the menu music at the current picks (caller holds s_mutex).
 		void ApplyPicks()
 		{
 			const auto count = static_cast<int>(s_options.size());
 			s_menuVideo = s_bgPick > 0 && s_bgPick < count ? s_options[s_bgPick].video : count > 0 ? s_options[0].video : std::string();
+			if (s_musicPick > 0 && s_musicPick < count) EnsureMusicCopy(s_options[s_musicPick]);
 			SetTheme(s_musicPick > 0 && s_musicPick < count ? s_options[s_musicPick].music : count > 0 ? s_options[0].music : std::string());
+		}
+
+		// The list position of an option in a list, 0 when the list does not show it (caller holds s_mutex).
+		[[nodiscard]] int SlotOf(List a_list, int a_option)
+		{
+			const auto entries = ListEntries(a_list);
+			const auto it = std::find(entries.begin(), entries.end(), a_option);
+			return it == entries.end() ? 0 : static_cast<int>(it - entries.begin());
+		}
+
+		// Writes the three lists' picks into the settings in effect, so the Main menu page shows them (caller holds s_mutex).
+		void SyncSettings()
+		{
+			for (const auto& [list, category] : kListCategories) {
+				const int option = list == List::Music ? s_musicPick : s_bgPick;
+				Settings::SetPick(category, list == List::Themes && s_bgPick != s_musicPick ? 0 : SlotOf(list, option));
+			}
 		}
 
 		// The pack id of an option, "" for Vanilla (caller holds s_mutex).
@@ -117,19 +189,10 @@ namespace ADT::MainMenu
 
 		void SaveState()
 		{
-			try {
-				nlohmann::json json;
-				std::ifstream in(StatePath());
-				if (in) { try { json = nlohmann::json::parse(in); } catch (...) { json = nlohmann::json::object(); } }
-				if (!json.is_object()) json = nlohmann::json::object();
-				json["menuVideo"] = OptionId(s_bgPick);
-				json["menuMusic"] = OptionId(s_musicPick);
-				std::filesystem::create_directories(StatePath().parent_path());
-				std::ofstream out(StatePath());
-				out << json.dump(1);
-			} catch (const std::exception& e) {
-				logger::warn("mainmenu: cannot save state: {}", e.what());
-			}
+			auto json = LoadState();
+			json["menuVideo"] = OptionId(s_bgPick);
+			json["menuMusic"] = OptionId(s_musicPick);
+			StoreState(json);
 		}
 
 		// The saved background pack id and, when saved, the music pack id; a state from before separate music has no music id.
@@ -150,14 +213,27 @@ namespace ADT::MainMenu
 		void* HookedBinkOpen(const char* a_name, std::uint32_t a_flags)
 		{
 			std::string name = a_name ? a_name : "";
-			const auto lowered = Settings::Lower(name);
+			auto lowered = Settings::Lower(name);
+			std::replace(lowered.begin(), lowered.end(), '/', '\\');
+			const auto file = lowered.substr(lowered.rfind('\\') + 1);
+			// The game asks for mainmenuloop.bk2; Random Main Menu asks for one of its mainmenuloop_<name>.bk2 files instead.
+			const bool loop = file.starts_with("mainmenuloop") && file.ends_with(".bk2");
 			std::string redirect;
-			if (lowered.ends_with("mainmenuloop.bk2")) {
+			if (file == "mainmenuloop.bk2") {
 				std::scoped_lock lock(s_mutex);
 				redirect = s_menuVideo;
+			} else if (loop) {
+				// Random Main Menu's choice: a pack entry plays the pack's video; while no switch lets it choose, the pick plays instead.
+				if (MenuRotation::VideoRotation()) {
+					redirect = MenuRotation::EntryVideo(file);
+				} else {
+					std::scoped_lock lock(s_mutex);
+					redirect = s_menuVideo.empty() ? std::string("Data\\Video\\MainMenuLoop.bk2") : s_menuVideo;
+					logger::info("mainmenu: '{}' asked for while no rotate switch is on; the pick plays", name);
+				}
 			}
-			if (s_opens.fetch_add(1) < 20) logger::info("mainmenu: BinkOpen('{}', {:#x}){}", name, a_flags, redirect.empty() ? "" : " -> " + redirect);
-			if (s_skipStartup.load() && !lowered.ends_with("mainmenuloop.bk2")) {
+			if (s_opens.fetch_add(1) < 20 || loop) logger::info("mainmenu: BinkOpen('{}', {:#x}){}", name, a_flags, redirect.empty() ? "" : " -> " + redirect);
+			if (s_skipStartup.load() && !loop) {
 				logger::info("mainmenu: startup video '{}' skipped for the autotest", name);
 				return nullptr;
 			}
@@ -166,13 +242,19 @@ namespace ADT::MainMenu
 				logger::warn("mainmenu: '{}' failed to open, falling back to '{}'", redirect, name);
 				result = s_originalBinkOpen(a_name, a_flags);
 			}
-			if (lowered.ends_with("mainmenuloop.bk2")) {
+			if (loop) {
+				// The menu is being built: the theme setting takes the pick now, ahead of the music starting.
+				{
+					std::scoped_lock lock(s_mutex);
+					ApplyThemeSetting();
+				}
 				// The loop starts when the intro videos are done, so the entry goes into the real menu only.
 				s_loopOpen.store(true);
 				F4SE::GetTaskInterface()->AddTask([] {
 					auto* ui = RE::UI::GetSingleton();
 					if (ui && ui->GetMenuOpen("MainMenu")) AttachToMenu();
 					if (ui && ui->GetMenuOpen("MainMenu")) ApplyNow::OnMainMenuReady();
+					if (ui && ui->GetMenuOpen("MainMenu")) MenuRotation::OnMainMenuReady();
 				});
 			}
 			return result;
@@ -684,7 +766,9 @@ namespace ADT::MainMenu
 				ApplyPicks();
 				logger::info("mainmenu: picked background '{}' and music '{}' -> video '{}', music '{}'", s_options[s_bgPick].name, s_options[s_musicPick].name, s_menuVideo, s_options[s_musicPick].music);
 				SaveState();
+				SyncSettings();
 			}
+			Settings::Save();
 			// The main menu opens its video when it is created. Hiding and showing the menu re-creates it with a dead list, so the
 			// engine's own return-to-main-menu sequence is requested instead, the path the game takes when leaving a save.
 			// That sequence ends a running game, so from inside one the picks are only stored for the next menu.
@@ -724,6 +808,11 @@ namespace ADT::MainMenu
 			return;
 		}
 		ui->RegisterSink<RE::MenuOpenCloseEvent>(&s_sink);
+		// The settings exist by now, and the INI values are in, so the theme setting takes the pick here whatever an INI says.
+		{
+			std::scoped_lock lock(s_mutex);
+			if (!ApplyThemeSetting()) logger::warn("mainmenu: the setting sMainMenuMusic was not found; the theme stays the executable's text");
+		}
 		if (!s_entryEnabled.load()) {
 			logger::info("mainmenu: menu entry disabled by the autotest");
 			return;
@@ -796,25 +885,165 @@ namespace ADT::MainMenu
 			options.push_back({ pack.name, pack.video.empty() ? std::string() : "Data\\Video\\" + pack.video, pack.music });
 			ids.push_back(pack.id);
 		}
-		const auto [savedVideo, savedMusic] = LoadStatePicks();
-		const auto find = [&](const std::string& a_id) {
-			for (std::size_t i = 1; i < ids.size(); ++i) {
-				if (ids[i] == a_id) return static_cast<int>(i);
-			}
-			return 0;
-		};
-		// A state from before separate music names one pack for both, as the single choice did.
-		const int saved = find(savedVideo);
-		const int background = saved > 0 && !options[saved].video.empty() ? saved : 0;
-		int music = savedMusic ? find(*savedMusic) : saved;
-		if (music > 0 && options[music].music.empty()) music = 0;
+		// Immersive Main Menus' menus after the packs; their music plays from a short-named copy, made when it is picked.
+		for (const auto& menu : MenuRotation::Menus()) {
+			Option option{ menu.name, menu.video, menu.music.empty() ? std::string() : "ADT\\" + menu.id + ".xwm" };
+			option.immersive = true;
+			option.musicSource = menu.music;
+			options.push_back(std::move(option));
+			ids.push_back("imm-" + menu.id);
+		}
 		std::scoped_lock lock(s_mutex);
 		s_options = std::move(options);
 		s_optionIds = std::move(ids);
+		s_bgPick = 0;
+		s_musicPick = 0;
+		logger::info("mainmenu: {} menu packs and {} Immersive Main Menus menus", Packs::All().size() - (vanilla ? 1 : 0), MenuRotation::Menus().size());
+	}
+
+	void LoadPicks()
+	{
+		std::scoped_lock lock(s_mutex);
+		s_immersiveShown.store(MenuRotation::Effective().immersiveMainMenus);
+		int background = 0, music = 0;
+		for (const auto& [list, category] : kListCategories) {
+			const auto entries = ListEntries(list);
+			const int slot = Settings::Pick(category);
+			const int option = slot > 0 && slot < static_cast<int>(entries.size()) ? entries[slot] : 0;
+			if (list == List::Themes && option > 0) background = music = option;
+			if (list == List::Backgrounds && option > 0) background = option;
+			if (list == List::Music && option > 0) music = option;
+		}
+		if (background == 0 && music == 0) {
+			// Settings from before the Main menu page name no pick; the plugin's own state from then still does.
+			const auto [savedVideo, savedMusic] = LoadStatePicks();
+			const auto find = [&](const std::string& a_id) {
+				for (std::size_t i = 1; i < s_optionIds.size(); ++i) {
+					if (s_optionIds[i] == a_id) return static_cast<int>(i);
+				}
+				return 0;
+			};
+			const int saved = find(savedVideo);
+			background = saved > 0 && !s_options[saved].video.empty() ? saved : 0;
+			music = savedMusic ? find(*savedMusic) : saved;
+			if (music > 0 && s_options[music].music.empty()) music = 0;
+		}
 		s_bgPick = background;
 		s_musicPick = music;
 		ApplyPicks();
+		SyncSettings();
 		logger::info("mainmenu: {} menu packs ({} themes, {} backgrounds, {} music); background '{}', music '{}'", s_options.size() - 1, ListEntries(List::Themes).size() - 1, ListEntries(List::Backgrounds).size() - 1, ListEntries(List::Music).size() - 1, s_options[s_bgPick].name, s_options[s_musicPick].name);
+	}
+
+	void ApplyFromSettings()
+	{
+		std::scoped_lock lock(s_mutex);
+		int picks[3]{};
+		for (const auto& [list, category] : kListCategories) {
+			const auto entries = ListEntries(list);
+			const int slot = Settings::Pick(category);
+			picks[static_cast<int>(list)] = slot > 0 && slot < static_cast<int>(entries.size()) ? entries[slot] : 0;
+		}
+		const int theme = picks[static_cast<int>(List::Themes)];
+		// The Themes list shows Vanilla while the background and the music differ, so Vanilla there is a change only when they match.
+		const int current = s_bgPick == s_musicPick ? s_bgPick : -1;
+		int background = picks[static_cast<int>(List::Backgrounds)];
+		int music = picks[static_cast<int>(List::Music)];
+		if (theme != current && (theme != 0 || current != -1)) background = music = theme;
+		if (background == s_bgPick && music == s_musicPick) {
+			SyncSettings();
+			return;
+		}
+		s_bgPick = background;
+		s_musicPick = music;
+		ApplyPicks();
+		SaveState();
+		SyncSettings();
+		logger::info("mainmenu: picks applied from the settings: background '{}', music '{}'", s_options[s_bgPick].name, s_options[s_musicPick].name);
+	}
+
+	void SetImmersiveShown(bool a_shown)
+	{
+		std::scoped_lock lock(s_mutex);
+		s_immersiveShown.store(a_shown);
+		if (a_shown) return;
+		const bool reset = (s_bgPick > 0 && s_options[s_bgPick].immersive) || (s_musicPick > 0 && s_options[s_musicPick].immersive);
+		if (s_bgPick > 0 && s_options[s_bgPick].immersive) s_bgPick = 0;
+		if (s_musicPick > 0 && s_options[s_musicPick].immersive) s_musicPick = 0;
+		if (reset) {
+			ApplyPicks();
+			SaveState();
+			SyncSettings();
+			logger::info("mainmenu: an Immersive Main Menus pick went back to Vanilla; its box is off");
+		}
+	}
+
+	int ListCount(List a_list)
+	{
+		std::scoped_lock lock(s_mutex);
+		return static_cast<int>(ListEntries(a_list).size()) - 1;
+	}
+
+	std::vector<std::string> ListIds(List a_list)
+	{
+		std::scoped_lock lock(s_mutex);
+		std::vector<std::string> out;
+		for (const int option : ListEntries(a_list)) {
+			if (option > 0) out.push_back(OptionId(option));
+		}
+		return out;
+	}
+
+	std::vector<std::string> ListNames(List a_list)
+	{
+		std::scoped_lock lock(s_mutex);
+		std::vector<std::string> out;
+		for (const int option : ListEntries(a_list)) {
+			if (option > 0) out.push_back(s_options[option].name);
+		}
+		return out;
+	}
+
+	int PickSlot(List a_list)
+	{
+		std::scoped_lock lock(s_mutex);
+		if (a_list == List::Themes) return s_bgPick == s_musicPick ? SlotOf(a_list, s_bgPick) : 0;
+		return SlotOf(a_list, a_list == List::Music ? s_musicPick : s_bgPick);
+	}
+
+	std::vector<MenuFile> PackMenuFiles()
+	{
+		std::scoped_lock lock(s_mutex);
+		std::vector<MenuFile> out;
+		for (std::size_t i = 0; i < s_options.size(); ++i) {
+			if (s_options[i].immersive || (s_options[i].video.empty() && s_options[i].music.empty())) continue;
+			out.push_back({ i == 0 ? "vanilla" : s_optionIds[i], s_options[i].name, s_options[i].video, s_options[i].music });
+		}
+		return out;
+	}
+
+	nlohmann::json LoadState()
+	{
+		try {
+			std::ifstream in(StatePath());
+			if (in) {
+				auto json = nlohmann::json::parse(in);
+				if (json.is_object()) return json;
+			}
+		} catch (...) {
+		}
+		return nlohmann::json::object();
+	}
+
+	void StoreState(const nlohmann::json& a_state)
+	{
+		try {
+			std::filesystem::create_directories(StatePath().parent_path());
+			std::ofstream out(StatePath());
+			out << a_state.dump(1);
+		} catch (const std::exception& e) {
+			logger::warn("mainmenu: cannot save state: {}", e.what());
+		}
 	}
 
 	std::string RedirectMovie(std::string_view a_url)
@@ -830,7 +1059,11 @@ namespace ADT::MainMenu
 			for (const auto& [pack, movie] : candidates) {
 				if (!pack->vanilla && pack->id == id) return movie->file;
 			}
-			// Leaves the file the mod manager resolved when the pick ships no main menu movie.
+			// Vanilla, or a pick that ships no copy, shows the game's own file from the vanilla pack; without that copy the
+			// file the mod manager resolved stays.
+			for (const auto& [pack, movie] : candidates) {
+				if (pack->vanilla) return movie->file;
+			}
 			return {};
 		} else {
 			// A list page's pick, or the share's pick for this file under the current layout.
