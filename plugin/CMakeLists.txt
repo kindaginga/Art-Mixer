@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(ArtMixer VERSION 1.0.0 LANGUAGES CXX)
+project(ArtMixer VERSION 1.0.2 LANGUAGES CXX)
 
 if (PROJECT_SOURCE_DIR STREQUAL PROJECT_BINARY_DIR)
 	message(FATAL_ERROR "In-source builds are not allowed.")

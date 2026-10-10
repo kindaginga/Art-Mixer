@@ -1,6 +1,6 @@
 {
   "name": "artdistributiontool",
-  "version-string": "1.0.0",
+  "version-string": "1.0.2",
   "description": "Art Mixer F4SE plugin",
   "dependencies": [
     "boost-stl-interfaces",

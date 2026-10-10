@@ -316,7 +316,7 @@ namespace ArtMixer::LoadScreens
 				++resolved;
 			}
 			logger::info("loading screens: ALR.esp is loaded; the Leave box is {}; {} of {} records point back at the game's own model", LeaveToALR() ? "on" : "off", resolved, s_records.size());
-			if (resolved < s_records.size()) logger::warn("loading screens: {} records have no game model in packs.json (converted before 1.0.0's Leave box), so their own look is Automated Loading Screen Replacer's picture; convert again", s_records.size() - resolved);
+			if (resolved < s_records.size()) logger::warn("loading screens: {} records have no game model in packs.json (written by an older converter), so their own look is Automated Loading Screen Replacer's picture; convert again", s_records.size() - resolved);
 		}
 		for (std::uint32_t i = 0; i < 512; ++i) {
 			auto* card = data->LookupForm<RE::TESObjectSTAT>(0x900 + i, "ArtMixer.esl");

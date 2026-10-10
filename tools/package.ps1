@@ -1,5 +1,5 @@
 param(
-    [string] $Version = "1.0.0",
+    [string] $Version = "1.0.2",
     [switch] $SkipBuild
 )
 # Builds every component and writes the two release archives into dist.
@@ -96,6 +96,27 @@ Copy-Item (Join-Path $root "plugin\build\vs2026\Release\ArtMixer.dll") (Join-Pat
 Copy-Item (Join-Path $root "mod\Data\ArtMixer.esl") (Join-Path $core "Data\")
 Copy-Item (Join-Path $root "mod\Data\Scripts") (Join-Path $core "Data\Scripts") -Recurse
 Copy-Item (Join-Path $root "mod\Data\MCM") (Join-Path $core "Data\MCM") -Recurse
+
+# The Papyrus compiler stamps every compiled script with the source path, the Windows user name and the machine name; the shipped
+# copies carry the script's path under Source\User and empty names instead.
+function Strip-PexStamp($path, $source) {
+    $bytes = [IO.File]::ReadAllBytes($path)
+    if ([BitConverter]::ToUInt32($bytes, 0) -ne [uint32]4200055006) { throw "not a compiled script: $path" }
+    $at = 16
+    for ($i = 0; $i -lt 3; $i++) { $at += 2 + [BitConverter]::ToUInt16($bytes, $at) }
+    $out = New-Object System.Collections.Generic.List[byte]
+    $out.AddRange([byte[]]$bytes[0..15])
+    foreach ($text in @($source, "", "")) {
+        $out.AddRange([BitConverter]::GetBytes([uint16]$text.Length))
+        if ($text.Length -gt 0) { $out.AddRange([Text.Encoding]::ASCII.GetBytes($text)) }
+    }
+    $out.AddRange([byte[]]$bytes[$at..($bytes.Length - 1)])
+    [IO.File]::WriteAllBytes($path, $out.ToArray())
+}
+$scripts = (Join-Path $core "Data\Scripts").TrimEnd('\') + '\'
+Get-ChildItem $scripts -Recurse -Filter "*.pex" | ForEach-Object {
+    Strip-PexStamp $_.FullName ($_.FullName.Substring($scripts.Length) -replace '\.pex$', '.psc')
+}
 Copy-Item (Join-Path $root "mod\Data\ArtMixer") (Join-Path $core "Data\ArtMixer") -Recurse
 Copy-Item (Join-Path $root "mod\fomod\*") (Join-Path $core "fomod\")
 

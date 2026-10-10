@@ -16,7 +16,7 @@ REQUIREMENTS
 ------------
   - F4SE for your game version (f4se.silverlock.org)
   - Mod Configuration Menu 1.39 or later (Nexus 21497)
-  - Runtime Database (Nexus 108394)
+  - Address Library for F4SE Plugins, All In One (Nexus 47327), or Runtime Database (Nexus 108394)
   - .NET 10 Desktop Runtime, x64 (dotnet.microsoft.com/download/dotnet/10.0), for the converter only
 
 
