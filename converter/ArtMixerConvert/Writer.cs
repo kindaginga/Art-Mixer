@@ -13,6 +13,8 @@ public sealed class PackOutput
     public string? Video { get; set; }
     /// <summary>Main menu theme relative to Music, when the mod ships one.</summary>
     public string? Music { get; set; }
+    /// <summary>The vanilla pack's copy of the game's loading menu (relative to Data), or null.</summary>
+    public string? LoadingMenu { get; set; }
 
     /// <summary>Interface files the pack replaces: the game path, the pack's copy (relative to Data) and the pick it follows.</summary>
     public List<(string Path, string File, string Category)> Movies { get; } = [];
@@ -507,8 +509,29 @@ public sealed class Writer
             pack.Music = $"ArtMixer\\{ShortHash("vanilla")}{theme.Extension}";
             WriteFile(Path.Combine("Music", pack.Music), theme.Data);
         }
+        // The game's own loading menu as a loose file: the plugin opens it on the loads that are Art Mixer's past another mod's copy.
+        if (_game.ReadInterface("interface\\loadingmenu.swf") is { } loadingMenu)
+        {
+            pack.LoadingMenu = "Interface\\ArtMixer\\Packs\\vanilla\\LoadingMenu.swf";
+            WriteFile(pack.LoadingMenu, loadingMenu);
+        }
+        else _report.Warn("vanilla: the game's own Interface\\LoadingMenu.swf could not be read, so a loading screen that shows a pack cover opens whatever loading menu file is installed");
         _report.Info($"pack 'Vanilla': {Report.Count(pictures, "picture", "pictures")} of the game's own, and the game's own version of {Report.Count(pack.Images.Count - pictures, "other replaced item", "other replaced items")}{(pack.Movies.Count > 0 ? $", {Report.Count(pack.Movies.Count, "interface file", "interface files")}" : "")}{(pack.Video != null ? ", main menu video" : "")}{(pack.Music != null ? ", main menu theme" : "")}");
         return pack;
+    }
+
+    // The game's own loading menu textures (relative to Data, lowercase) with the game archive each is in: the plugin serves them past
+    // Automated Loading Screen Replacer's copies while its Leave box is off.
+    private static readonly string[] LoadingMenuPaths = ["textures\\interface\\objects\\loadscreen\\overlay01_d.dds", "textures\\effects\\luts\\loadingmenucolorlut.dds"];
+    private Dictionary<string, string> LoadingMenuFiles()
+    {
+        var files = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var path in LoadingMenuPaths)
+        {
+            if (_game.GameFileArchive(path) is { } archive) files[path] = archive;
+            else _report.Warn($"loading screens: the game's own {path} is in no game archive, so it cannot be served past another mod's copy");
+        }
+        return files;
     }
 
     // The path (relative to Textures) that shows the game's own texture past any mod's file: ArtMixer\Game\<its path>, which the plugin
@@ -1001,6 +1024,8 @@ public sealed class Writer
             categories,
             gameTextures = _gameTextures,
             gameModels = _gameModels,
+            gameFiles = LoadingMenuFiles(),
+            screenModels = _game.GameLoadScreenForms().ToDictionary(kv => kv.Key.Text, kv => (object)new { model = kv.Value.Shown.Text, transform = kv.Value.Transform?.Text, rotation = kv.Value.Rotation, zoom = kv.Value.Zoom }, StringComparer.OrdinalIgnoreCase),
             models = _models.ToDictionary(m => m.Key, m => (object)(m.Value.Copy == null
                 ? new { materials = m.Value.Materials }
                 : new { copy = m.Value.Copy, materials = m.Value.Materials, inline = m.Value.Inline })),
@@ -1012,6 +1037,7 @@ public sealed class Writer
                 page = MainPage(p) is { Length: > 0 } page ? page : null,
                 video = p.Video,
                 music = p.Music,
+                loadingMenu = p.LoadingMenu,
                 movies = p.Movies.Count == 0 ? null : p.Movies.Select(m => new { path = m.Path, file = m.File, category = m.Category }),
                 screens = p.Screens.Count == 0 ? null : p.Screens.Select(s => new { screen = s.Screen, card = s.Card, model = s.Model, gameModel = s.GameModel, swap = s.Swap, color = s.Color }),
                 images = p.Images.Select(i =>
@@ -1041,23 +1067,16 @@ public sealed class Writer
     public void WriteMcm(List<PackOutput> packs, int slotsPerCategory)
     {
         var pages = new List<object>();
-        var pipboyContent = new List<object>
-        {
-            new { type = "text", text = "Pick a pack, or Vanilla.", html = false },
-        };
-        var mapContent = new List<object>
-        {
-            new { type = "text", text = "Pick a pack, or Vanilla.", html = false },
-        };
-        // The Main menu page: the MENU ART entry's three lists, then the Random Main Menu box with what it adds.
-        var menuContent = new List<object>
-        {
-            new { type = "text", text = "Pick a pack, or Vanilla.", html = false },
-        };
+        var pipboyContent = new List<object>();
+        var mapContent = new List<object>();
+        // The Main menu section: the MENU ART entry's three lists, then the Random Main Menu box with what it adds.
+        var menuContent = new List<object>();
         foreach (var pack in packs.Where(p => p.Id != "vanilla" && MainPage(p).Length > 0 && ArtPages.Count(page => OnPage(p, page) > 0) > 1))
         {
             _report.Info($"{pack.Name}: its {(MainPage(pack) == "other" ? "switch" : "slider")} sits on {PageTitles[Array.IndexOf(Categories, MainPage(pack))]} and sets its {Reach(pack)}");
         }
+        // The Loading screens controls, shown as a section of the Menus page after the main menu's.
+        List<object>? loadingContent = null;
         var settings = new StringBuilder("[ArtMixer_Main]\nbNewLayoutEachLoad=0\niSeed=1\nsPackSignature=\n");
         foreach (var category in Categories)
         {
@@ -1098,31 +1117,36 @@ public sealed class Writer
                 continue;
             }
             foreach (var pack in slots) settings.Append($"iPack_{pack.Id}=0\n");
-            if (slots.Count == 0) continue;
+            if (loading) settings.Append("bLeaveToALR=0\n");
+            if (slots.Count == 0 && !loading) continue;
             object Slider(int slot)
             {
                 var pack = slots[slot - 1];
                 if (loading)
                 {
                     var covers = pack.Images.Count(i => i.IsCover);
-                    return new { id = $"iPack_{pack.Id}:{sectionName}", type = "slider", text = pack.Name, help = Report.Count(covers, "cover", "covers"), valueOptions = new { min = 0, max = 100, step = 1, sourceType = "ModSettingInt" } };
+                    return new { id = $"iPack_{pack.Id}:{sectionName}", type = "slider", text = pack.Name, help = Report.Count(covers, "cover", "covers"), groupCondition = new { NOT = new[] { 4 } }, groupBehavior = "hide", valueOptions = new { min = 0, max = 100, step = 1, sourceType = "ModSettingInt" } };
                 }
                 return new { id = $"iPack_{pack.Id}:{sectionName}", type = "slider", text = pack.Name, help = Reach(pack), valueOptions = new { min = 0, max = 100, step = 1, sourceType = "ModSettingInt" } };
             }
             var locations = loading ? slots.Select(_ => "").ToList() : PageLocations(slots, category);
-            var intro = loading
-                ? "Slider: percent of loading screens."
-                : "Slider: percent of the pack's art shown.";
-            var page = new List<object> { new { type = "text", text = intro, html = false } };
+            var page = new List<object>();
+            if (loading)
+            {
+                // Automated Loading Screen Replacer (Nexus 52322): one switch, which the plugin takes out of this file while ALR.esp is not loaded; on, the sliders below it hide.
+                page.Add(new { type = "section", text = "Loading screens" });
+                page.Add(new { id = $"bLeaveToALR:{sectionName}", type = "switcher", text = "Automated Loading Screen Replacer", groupControl = 4, valueOptions = new { sourceType = "ModSettingBool" } });
+            }
             // The packs tied to no one location first, then each location's under its heading.
             var sections = Enumerable.Range(1, slots.Count).GroupBy(slot => locations[slot - 1]).OrderBy(s => s.Key.Length == 0 ? -1 : Array.FindIndex(Locations, l => l.Name == s.Key)).ToList();
-            var headings = sections.Count > 1 || sections[0].Key.Length > 0;
+            var headings = sections.Count > 1 || (sections.Count == 1 && sections[0].Key.Length > 0);
             foreach (var section in sections)
             {
                 if (headings) page.Add(new { type = "section", text = section.Key.Length == 0 ? "Base game" : section.Key });
                 foreach (var slot in section) page.Add(Slider(slot));
             }
-            pages.Add(new { pageDisplayName = PageTitles[index], content = page });
+            if (loading) loadingContent = page;
+            else pages.Add(new { pageDisplayName = PageTitles[index], content = page });
         }
         // Random Main Menu (Nexus 74187) and Immersive Main Menus (Nexus 82077): each box is set by the plugin when it finds the mod at
         // game start; what a box adds shows only while it is on. The settings default to off until the plugin sets them.
@@ -1135,9 +1159,13 @@ public sealed class Writer
         menuContent.Add(new { id = "bRotateBackgrounds:ArtMixer_MainMenu", type = "switcher", text = "Rotate backgrounds", help = "Random Main Menu draws a background at each menu; the Music pick stays.", groupCondition = rotate, groupBehavior = "hide", valueOptions = new { sourceType = "ModSettingBool" } });
         menuContent.Add(new { id = "bRotateMusic:ArtMixer_MainMenu", type = "switcher", text = "Rotate music", help = "Random Main Menu draws music at each menu; the Backgrounds pick stays.", groupCondition = rotate, groupBehavior = "hide", valueOptions = new { sourceType = "ModSettingBool" } });
         settings.Append("\n[ArtMixer_MainMenu]\nbRandomMainMenu=0\nbImmersiveMainMenus=0\nbImmersiveOnly=0\nbRotateThemes=0\nbRotateBackgrounds=0\nbRotateMusic=0\n");
-        pages.Insert(0, new { pageDisplayName = "Main menu", content = menuContent.ToArray() });
-        if (pipboyContent.Count > 1) pages.Add(new { pageDisplayName = "Pip-Boy", content = pipboyContent.ToArray() });
-        if (mapContent.Count > 1) pages.Add(new { pageDisplayName = "World map", content = mapContent.ToArray() });
+        if (pipboyContent.Count > 0) pages.Add(new { pageDisplayName = "Pip-Boy", content = pipboyContent.ToArray() });
+        if (mapContent.Count > 0) pages.Add(new { pageDisplayName = "World map", content = mapContent.ToArray() });
+        // The Menus page, last: the main menu's picks and boxes, then the loading screens' boxes and sliders (ruling 2026-10-09).
+        var menus = new List<object> { new { type = "section", text = "Main menu" } };
+        menus.AddRange(menuContent);
+        if (loadingContent != null) menus.AddRange(loadingContent);
+        pages.Add(new { pageDisplayName = "Menus", content = menus.ToArray() });
         var config = new
         {
             modName = "ArtMixer",
@@ -1146,7 +1174,7 @@ public sealed class Writer
             pluginRequirements = new[] { "ArtMixer.esl" },
             content = new object[]
             {
-                new { type = "text", text = "<font size='24'><font color='#FF0000'>Art</font> <font color='#FFFFFF'>Distribution</font> <font color='#A020F0'>Tool</font></font>", html = true },
+                new { type = "text", text = "<font size='24'><font color='#FF0000'>Art</font> <font color='#FFFFFF'>Mixer</font></font>", html = true },
                 new { type = "text", text = packs.Any(p => p.Id != "vanilla") ? $"{Report.Count(packs.Count(p => p.Id != "vanilla"), "pack", "packs")}, {DateTime.Now:yyyy-MM-dd}" : "No packs. Run the converter.", html = false },
                 new { type = "text", text = "Changes take effect on Apply all.", html = false },
                 new { type = "spacer", numLines = 1 },
@@ -1170,10 +1198,7 @@ public sealed class Writer
     /// replaces; packs that are on for the same object share it evenly, and each switch's help line gives the split.</summary>
     private List<object> OtherPage(List<PackOutput> packs, List<PackOutput> slots)
     {
-        var content = new List<object>
-        {
-            new { type = "text", text = "Switch: pack on or off.", html = false },
-        };
+        var content = new List<object>();
         // Only what a page control sets: the Pip-Boy lists and magazine backs follow rules of their own.
         static bool Counts(ImageOutput image) => ArtPages.Contains(image.Category);
         // Every pack's objects, so a switch can name the packs it shares objects with.

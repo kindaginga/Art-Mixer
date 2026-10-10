@@ -16,6 +16,7 @@ namespace ArtMixer::Settings
 		int seed{ 1 };
 		std::map<std::string, CategorySettings> categories;
 		std::map<std::string, int> mainMenu;  // the Main menu page's boxes and switches by lowercase key, as applied; absent until applied once
+		std::map<std::string, int> loadingScreens;  // the Loading screens section's Leave box by lowercase key ("bleavetoalr"), as applied
 	};
 
 	// Reads the MCM defaults, then the applied settings; on the first start without them, the menu's values, which it then saves as applied.
@@ -40,6 +41,8 @@ namespace ArtMixer::Settings
 	void SetPick(std::string_view a_category, int a_slot);
 	// A Main menu page value as applied (lowercase key such as "brandommainmenu"), or nothing when never applied.
 	[[nodiscard]] std::optional<int> MainMenuFlag(std::string_view a_key);
+	// A Loading screens page box as applied (lowercase key such as "bleavetoalr"), or nothing when never applied.
+	[[nodiscard]] std::optional<int> LoadingScreensFlag(std::string_view a_key);
 	// MCM section names carry this prefix (lowercase here); category names drop it.
 	inline constexpr std::string_view kSectionPrefix{ "artmixer_" };
 	// Lowercase category name without the MCM section prefix.

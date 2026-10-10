@@ -1,5 +1,7 @@
 #include "MenuRotation.h"
 
+#include "LoadScreens.h"
+
 #include "MainMenu.h"
 #include "Settings.h"
 
@@ -407,10 +409,34 @@ namespace ArtMixer::MenuRotation
 					}
 				}
 			}
+			// The Leave box of the Loading screens section is in the menu only while ALR.esp is loaded; while it is out, the page keeps it under artMixerHidden.
+			if (const auto alr = LoadScreens::ALRLoaded(); alr) {
+				constexpr std::string_view kLeaveBox = "bLeaveToALR:ArtMixer_LoadingScreens";
+				for (auto& page : config["pages"]) {
+					if (!page.contains("content") || !page["content"].is_array()) continue;
+					auto& content = page["content"];
+					const auto box = std::find_if(content.begin(), content.end(), [&](const nlohmann::json& a_control) { return a_control.value("id", std::string()) == kLeaveBox; });
+					if (*alr && box == content.end() && page.contains("artMixerHidden") && page["artMixerHidden"].is_array() && !page["artMixerHidden"].empty()) {
+						const auto before = std::find_if(content.begin(), content.end(), [](const nlohmann::json& a_control) { return a_control.value("id", std::string()).ends_with(":ArtMixer_LoadingScreens") || a_control.value("text", std::string()) == "Loading screen packs"; });
+						content.insert(before, page["artMixerHidden"][0]);
+						page.erase("artMixerHidden");
+						changed = true;
+					} else if (!*alr && box != content.end()) {
+						page["artMixerHidden"] = nlohmann::json::array({ *box });
+						content.erase(box);
+						changed = true;
+					}
+				}
+			}
 			if (!changed) return;
-			if (WriteText(path, config.dump(2) + "\n")) logger::info("mainmenu: MCM lists brought up to date in {}", path.string());
+			if (WriteText(path, config.dump(2) + "\n")) logger::info("mainmenu: MCM config brought up to date in {} (lists; Leave box {})", path.string(), LoadScreens::ALRLoaded().value_or(false) ? "shown" : "hidden");
 			else logger::error("mainmenu: could not write {}", path.string());
 		}
+	}
+
+	void RefreshMenuConfig()
+	{
+		UpdateMenuConfig();
 	}
 
 	void Detect()
@@ -747,7 +773,7 @@ namespace ArtMixer::MenuRotation
 	{
 		if (!s_failed.load() || s_messageShown.exchange(true)) return;
 		if (auto* manager = RE::MessageMenuManager::GetSingleton(); manager) {
-			manager->Create("Art Mixer", "Random Main Menu is installed (Data\\F4SE\\Plugins\\RandomMainMenu.dll) but did not load, so its box on the Main menu page stays off. Check that its version matches your game and that Address Library is installed.", new Notice(), RE::WARNING_TYPES::kDefault, "OK");
+			manager->Create("Art Mixer", "Random Main Menu is installed (Data\\F4SE\\Plugins\\RandomMainMenu.dll) but did not load, so its box on the Menus page stays off. Check that its version matches your game and that Address Library is installed.", new Notice(), RE::WARNING_TYPES::kDefault, "OK");
 		}
 		logger::info("mainmenu: Random Main Menu load failure message shown; names hidden so far {}", s_hiddenCount.load());
 	}

@@ -2,6 +2,7 @@
 
 #include "Catalog.h"
 #include "Distributor.h"
+#include "MenuRotation.h"
 #include "Packs.h"
 #include "Settings.h"
 
@@ -23,10 +24,14 @@ namespace ArtMixer::LoadScreens
 			RE::TESForm** transform{ nullptr };
 			std::int16_t* rotation{ nullptr };
 			float* zoom{ nullptr };
-			RE::TESForm* originalModel{ nullptr };
+			RE::TESForm* originalModel{ nullptr };  // the game's own model: the form found at game data ready, or with ALR.esp loaded the form packs.json names
+			RE::TESForm* foundModel{ nullptr };     // the form found at game data ready, which is Automated Loading Screen Replacer's while it is loaded
 			RE::TESForm* originalTransform{ nullptr };
 			std::array<std::int16_t, 2> originalRotation{};
 			std::array<float, 2> originalZoom{};
+			RE::TESForm* foundTransform{ nullptr };  // the framing and motion found at game data ready, kept for the Leave box
+			std::array<std::int16_t, 2> foundRotation{};
+			std::array<float, 2> foundZoom{};
 		};
 
 		// How the magazine turns and zooms on the game's magazine screens.
@@ -44,6 +49,10 @@ namespace ArtMixer::LoadScreens
 		std::vector<RE::TESObjectSTAT*> s_cards;
 		RE::BGSTransform* s_magazineTransform{ nullptr };
 		bool s_active{ false };
+		bool s_alrLoaded{ false };               // ALR.esp (Automated Loading Screen Replacer) is in the load order
+		bool s_dataReady{ false };               // the game data is loaded, so s_alrLoaded is known
+		std::size_t s_load{ 0 };                 // index of the next loading screen, the roll's key
+		std::atomic<bool> s_nextIsCover{ false };  // the next loading screen shows a pack cover, so it gets the game's own loading menu
 		std::vector<std::string> s_testCards;
 		std::size_t s_testCard{ 0 };
 		float s_cardColor{ 0.0F };  // the card statics' own color remapping index
@@ -118,74 +127,75 @@ namespace ArtMixer::LoadScreens
 			if (a_record.zoom) std::copy(a_record.originalZoom.begin(), a_record.originalZoom.end(), a_record.zoom);
 		}
 
-		// Gives every loading screen record the cover the current layout picks for it, or its own look when the pick is
-		// vanilla; the same settings always give the same covers (game thread).
+		// True while ALR.esp is loaded and the Leave box on the Loading screens page is on: the loading screens are left to it.
+		[[nodiscard]] bool LeaveToALR()
+		{
+			return s_alrLoaded && Settings::LoadingScreensFlag("bleavetoalr").value_or(0) != 0;
+		}
+
+		// Points a record back at what Automated Loading Screen Replacer left in it (caller holds the lock).
+		void LeaveRecord(Record& a_record)
+		{
+			*a_record.model = a_record.foundModel;
+			if (a_record.transform) *a_record.transform = a_record.foundTransform;
+			if (a_record.rotation) std::copy(a_record.foundRotation.begin(), a_record.foundRotation.end(), a_record.rotation);
+			if (a_record.zoom) std::copy(a_record.foundZoom.begin(), a_record.foundZoom.end(), a_record.zoom);
+		}
+
+		// Rolls the next loading screen under the load's index: the pack whose cover shows, or the screens' own look, by the Loading
+		// screens shares and the layout seed; every record then shows that one outcome, so a share is a true percentage of loads, and
+		// a load that is Art Mixer's gets the game's own loading menu (ruling 2026-10-09: no mod overrides the sliders). With the Leave
+		// box on, every record stays as Automated Loading Screen Replacer set it (game thread).
 		void Assign()
 		{
 			std::scoped_lock lock(s_mutex);
 			if (!s_active || !s_testCards.empty() || s_cards.empty()) return;
-			// The assignment depends only on the seed and the loading screen shares, so it is redone only when those change.
-			const auto values = Settings::Get();
-			const auto shares = values.categories.find("loadingscreens");
-			auto state = fmt::format("{}", values.seed);
-			if (shares != values.categories.end()) {
-				for (const auto percent : shares->second.percent) state += fmt::format("|{}", percent);
+			if (LeaveToALR()) {
+				for (auto& record : s_records) LeaveRecord(record);
+				s_nextIsCover.store(false);
+				logger::info("loading screens: load {} left to Automated Loading Screen Replacer", s_load);
+				return;
 			}
-			static std::string s_assigned;
-			if (state == s_assigned) return;
-			s_assigned = state;
-			std::size_t shown = 0;
-			std::size_t vanillaCards = 0;
-			std::size_t withoutCard = 0;
-			// One card static per card model and color; records showing the same card share it.
-			std::unordered_map<std::string, std::size_t> used;
-			const auto cardIndex = [&](const std::string& a_model, std::optional<float> a_color) -> std::optional<std::size_t> {
-				const auto key = fmt::format("{}|{}", Settings::Lower(a_model), a_color ? fmt::format("{}", *a_color) : std::string());
-				if (const auto it = used.find(key); it != used.end()) return it->second;
-				if (used.size() >= s_cards.size()) return std::nullopt;
-				const auto index = used.size();
-				used.emplace(key, index);
-				SetCard(s_cards[index], a_model, a_color);
-				return index;
-			};
-			// A screen showing the game's own form: the vanilla card of its model where a converted mod ships that model's files, else its own look.
-			const auto showOwn = [&](Record& a_record) {
-				if (const auto* own = OwnCard(a_record); own) {
-					if (const auto index = cardIndex(own->card, own->color); index) {
-						const Motion motion{ a_record.originalRotation, a_record.originalZoom };
-						Show(a_record, s_cards[*index], static_cast<RE::BGSTransform*>(a_record.originalTransform), motion);
-						++vanillaCards;
-						return;
+			const auto key = fmt::format("loadscreen|{}", s_load);
+			const auto* pack = Distributor::RollCategory("loadingscreens", key);
+			std::vector<const Packs::Image*> covers;
+			if (pack && !pack->vanilla) {
+				for (const auto& [category, images] : pack->images) {
+					for (const auto& image : images) {
+						if (!image.card.empty()) covers.push_back(&image);
 					}
-					++withoutCard;
 				}
-				RestoreRecord(a_record);
-			};
-			for (auto& record : s_records) {
-				const auto* pack = Distributor::RollCategory("loadingscreens", "loadscreen|" + record.key);
-				std::vector<const Packs::Image*> covers;
-				if (pack && !pack->vanilla) {
-					for (const auto& [category, images] : pack->images) {
-						for (const auto& image : images) {
-							if (!image.card.empty()) covers.push_back(&image);
+			}
+			if (covers.empty()) {
+				// The screens' own look: the vanilla card of a converted model where a pack ships that model's files, else the record untouched.
+				std::size_t vanillaCards = 0;
+				std::unordered_map<std::string, std::size_t> used;
+				for (auto& record : s_records) {
+					if (const auto* own = OwnCard(record); own) {
+						const auto cardKey = fmt::format("{}|{}", Settings::Lower(own->card), own->color ? fmt::format("{}", *own->color) : std::string());
+						auto it = used.find(cardKey);
+						if (it == used.end() && used.size() < s_cards.size()) {
+							it = used.emplace(cardKey, used.size()).first;
+							SetCard(s_cards[it->second], own->card, own->color);
+						}
+						if (it != used.end()) {
+							const Motion motion{ record.originalRotation, record.originalZoom };
+							Show(record, s_cards[it->second], static_cast<RE::BGSTransform*>(record.originalTransform), motion);
+							++vanillaCards;
+							continue;
 						}
 					}
-				}
-				if (covers.empty()) {
-					showOwn(record);
-					continue;
-				}
-				const auto* cover = covers[static_cast<std::size_t>(Distributor::LayoutHash("loadscreen-image|" + record.key) % covers.size())];
-				const auto index = cardIndex(cover->card, std::nullopt);
-				if (!index) {
-					++withoutCard;
 					RestoreRecord(record);
-					continue;
 				}
-				ShowCover(record, s_cards[*index]);
-				++shown;
+				s_nextIsCover.store(false);
+				logger::info("loading screens: load {} shows the screens' own look ({} with the vanilla card of their model)", s_load, vanillaCards);
+				return;
 			}
-			logger::info("loading screens: {} of {} records show a pack cover under the current settings; {} show the vanilla card of their own model and {} their own look for want of a free card", shown, s_records.size(), vanillaCards, withoutCard);
+			const auto* cover = covers[static_cast<std::size_t>(Distributor::LayoutHash("loadscreen-image|" + key) % covers.size())];
+			SetCard(s_cards[0], cover->card, std::nullopt);
+			for (auto& record : s_records) ShowCover(record, s_cards[0]);
+			s_nextIsCover.store(true);
+			logger::info("loading screens: load {} shows {} from '{}'", s_load, cover->card, pack->name);
 		}
 
 		// Test runs: the next named card on every record, one per loading screen (game thread).
@@ -226,6 +236,7 @@ namespace ArtMixer::LoadScreens
 			}
 			SetCard(s_card, cover->card, std::nullopt);
 			for (auto& record : s_records) ShowCover(record, s_card);
+			s_nextIsCover.store(true);
 			logger::info("loading screens: next shows {} from '{}'", cover->card, pack ? pack->name : "");
 		}
 	}
@@ -234,10 +245,11 @@ namespace ArtMixer::LoadScreens
 	{
 		auto* data = RE::TESDataHandler::GetSingleton();
 		if (!data) return;
-		if (const auto* alr = data->LookupModByName("ALR.esp"); alr && alr->GetCompileIndex() != 0xFF) {
-			logger::info("loading screens: ALR is active, so its loading screens are left to it");
-			return;
-		}
+		// Ruling 2026-10-09: no other mod overrides the sliders; with ALR.esp loaded the Leave box decides, off by default.
+		const auto* alr = data->LookupModByName("ALR.esp");
+		s_alrLoaded = alr && alr->GetCompileIndex() != 0xFF;
+		s_dataReady = true;
+		MenuRotation::RefreshMenuConfig();
 		s_card = data->LookupForm<RE::TESObjectSTAT>(0x802, "ArtMixer.esl");
 		s_magazineTransform = data->LookupForm<RE::BGSTransform>(0x249731, "Fallout4.esm");
 		if (!s_magazineTransform) logger::warn("loading screens: the game's magazine framing (Fallout4.esm 0x249731) is missing, so cover cards keep each screen's own framing");
@@ -266,10 +278,14 @@ namespace ArtMixer::LoadScreens
 			}
 			record.rotation = reinterpret_cast<std::int16_t*>(block + 0x8);
 			record.zoom = reinterpret_cast<float*>(block + 0x48);
-			record.originalModel = *record.model;
+			record.foundModel = *record.model;
+			record.originalModel = record.foundModel;
 			record.originalTransform = record.transform ? *record.transform : nullptr;
 			std::copy(record.rotation, record.rotation + 2, record.originalRotation.begin());
 			std::copy(record.zoom, record.zoom + 2, record.originalZoom.begin());
+			record.foundTransform = record.originalTransform;
+			record.foundRotation = record.originalRotation;
+			record.foundZoom = record.originalZoom;
 			s_records.push_back(record);
 		}
 		// The rotation and zoom ranges sit at fixed offsets; they are written only when every record holds a plausible range there.
@@ -285,6 +301,22 @@ namespace ArtMixer::LoadScreens
 				record.zoom = nullptr;
 			}
 			logger::warn("loading screens: the rotation and zoom ranges are not where they were measured, so cards keep each screen's own motion");
+		}
+		if (s_alrLoaded) {
+			// Automated Loading Screen Replacer rewrote the records before this ran, so each screen's own look comes from packs.json.
+			std::size_t resolved = 0;
+			for (auto& record : s_records) {
+				const auto* look = Packs::GameScreen(record.key);
+				auto* form = look ? RE::TESForm::GetFormByID(Catalog::FormIDOf(look->model)) : nullptr;
+				if (!form) continue;
+				record.originalModel = form;
+				record.originalTransform = look->transform.empty() ? nullptr : RE::TESForm::GetFormByID(Catalog::FormIDOf(look->transform));
+				if (look->rotation) record.originalRotation = *look->rotation;
+				if (look->zoom) record.originalZoom = *look->zoom;
+				++resolved;
+			}
+			logger::info("loading screens: ALR.esp is loaded; the Leave box is {}; {} of {} records point back at the game's own model", LeaveToALR() ? "on" : "off", resolved, s_records.size());
+			if (resolved < s_records.size()) logger::warn("loading screens: {} records have no game model in packs.json (converted before 1.0.0's Leave box), so their own look is Automated Loading Screen Replacer's picture; convert again", s_records.size() - resolved);
 		}
 		for (std::uint32_t i = 0; i < 512; ++i) {
 			auto* card = data->LookupForm<RE::TESObjectSTAT>(0x900 + i, "ArtMixer.esl");
@@ -303,6 +335,26 @@ namespace ArtMixer::LoadScreens
 		if (s_active) Assign();
 	}
 
+	bool NextIsCover()
+	{
+		return s_nextIsCover.load();
+	}
+
+	bool ServesGameFiles()
+	{
+		return s_alrLoaded && !LeaveToALR();
+	}
+
+	std::vector<std::pair<std::string, int>> FlagValues(bool a_defaults)
+	{
+		return { { "bLeaveToALR:ArtMixer_LoadingScreens", !a_defaults && LeaveToALR() ? 1 : 0 } };
+	}
+
+	std::optional<bool> ALRLoaded()
+	{
+		return s_dataReady ? std::optional<bool>(s_alrLoaded) : std::nullopt;
+	}
+
 	void SetTestCards(std::vector<std::string> a_cards)
 	{
 		std::scoped_lock lock(s_mutex);
@@ -311,6 +363,17 @@ namespace ArtMixer::LoadScreens
 
 	void OnLoadingMenuClosed()
 	{
-		if (s_active && !s_testCards.empty()) F4SE::GetTaskInterface()->AddTask([] { Prepare(); });
+		if (!s_active) return;
+		F4SE::GetTaskInterface()->AddTask([] {
+			if (!s_testCards.empty()) {
+				Prepare();
+				return;
+			}
+			{
+				std::scoped_lock lock(s_mutex);
+				++s_load;
+			}
+			Assign();
+		});
 	}
 }

@@ -55,6 +55,7 @@ namespace ArtMixer::Packs
 		std::string page;   // the page its one control sits on ("paintings", "posters", "signage", "magazines", "quest", "mixed" or "other"), empty for none
 		std::string video;  // main menu video relative to Video, empty when the pack has none
 		std::string music;  // main menu theme relative to Music, empty when the pack has none
+		std::string loadingMenu;  // the vanilla pack's loose copy of the game's loading menu, relative to Data; empty elsewhere
 		std::map<std::string, std::vector<Image>> images;  // by category
 		std::vector<Movie> movies;
 		std::unordered_map<std::string, ScreenCard> screens;  // loading screen ("file:local id", lowercase) -> its card
@@ -76,6 +77,18 @@ namespace ArtMixer::Packs
 	void OnGameDataReady();
 	// The card the vanilla pack shows a loading screen ("file:local id") with, or null.
 	[[nodiscard]] const ScreenCard* VanillaScreenCard(std::string_view a_screen);
+	// A game loading screen's own look in the game's own plugins: the form it shows, its framing transform (empty for none), its rotation range and its zoom range.
+	struct ScreenLook
+	{
+		std::string model;
+		std::string transform;
+		std::optional<std::array<std::int16_t, 2>> rotation;
+		std::optional<std::array<float, 2>> zoom;
+	};
+	// The own look of a game loading screen ("file:local id"), or null when packs.json does not list it.
+	[[nodiscard]] const ScreenLook* GameScreen(std::string_view a_screen);
+	// The game's own loading menu files (lowercase paths relative to Data) with the game archive each is read from, from packs.json.
+	[[nodiscard]] const std::unordered_map<std::string, std::string>& GameFiles();
 	// Every game record change of a converted mod's plugin that packs.json lists.
 	[[nodiscard]] const std::vector<Restore>& Restores();
 	// Whether a swap entry ("file:local id" and the material it replaces) shows the game's or a converted mod's material.

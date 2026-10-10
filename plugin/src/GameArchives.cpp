@@ -250,21 +250,22 @@ namespace ArtMixer::GameArchives
 				const auto lower = Settings::Lower(name);
 				if (!lower.ends_with(".ba2")) continue;
 				if (!lower.starts_with("fallout4 - ") && !lower.starts_with("dlc") && !lower.starts_with("cc")) continue;
-				if (lower.find(" - textures") == std::string::npos && lower.find(" - meshes") == std::string::npos && lower.find(" - main") == std::string::npos) continue;
+				if (lower.find(" - textures") == std::string::npos && lower.find(" - meshes") == std::string::npos && lower.find(" - main") == std::string::npos && lower.find(" - interface") == std::string::npos) continue;
 				names.push_back(name);
 			}
 			std::sort(names.begin(), names.end(), [](const auto& a_left, const auto& a_right) { return Settings::Lower(a_left) > Settings::Lower(a_right); });
 			for (const auto& name : names) {
 				if (auto archive = ArchiveNamed(name)) s_all.push_back(std::move(archive));
 			}
-			logger::info("game archives: indexed all {} texture and model archives of the game", s_all.size());
+			logger::info("game archives: indexed all {} texture, model and interface archives of the game", s_all.size());
 		}
 
 		// The game's own file (lowercase path relative to Data) in the archive packs.json names for it, else in any game archive.
 		[[nodiscard]] Located Find(const std::string& a_file)
 		{
 			std::scoped_lock lock(s_lock);
-			if (const auto source = s_sources.find(a_file); source != s_sources.end()) {
+			const auto source = s_sources.find(a_file);
+			if (source != s_sources.end()) {
 				if (const auto archive = ArchiveNamed(source->second)) {
 					if (const auto entry = archive->entries.find(a_file); entry != archive->entries.end()) return { archive, &entry->second };
 				}
@@ -272,7 +273,7 @@ namespace ArtMixer::GameArchives
 			IndexAll();
 			for (const auto& archive : s_all) {
 				if (const auto entry = archive->entries.find(a_file); entry != archive->entries.end()) {
-					if (s_logs.fetch_add(1) < 60) logger::warn("game archives: {} is not where packs.json places it; read from {}", a_file, archive->path.filename().string());
+					if (source != s_sources.end() && s_logs.fetch_add(1) < 60) logger::warn("game archives: {} is not where packs.json places it; read from {}", a_file, archive->path.filename().string());
 					return { archive, &entry->second };
 				}
 			}
@@ -336,7 +337,7 @@ namespace ArtMixer::GameArchives
 				while (matched < kMarker.size() && same(path[start + matched], kMarker[matched])) ++matched;
 				if (matched != kMarker.size()) continue;
 				const auto head = Settings::Lower(path.substr(0, start));
-				const std::string_view root = head.ends_with("textures") ? "textures\\" : head.ends_with("meshes") ? "meshes\\" : "";
+				const std::string_view root = head.ends_with("textures") ? "textures\\" : head.ends_with("meshes") ? "meshes\\" : head.ends_with("interface") ? "interface\\" : "";
 				if (root.empty()) return {};
 				auto rest = Settings::Lower(path.substr(start + kMarker.size()));
 				std::replace(rest.begin(), rest.end(), '/', '\\');
@@ -575,6 +576,12 @@ namespace ArtMixer::GameArchives
 		s_sources.clear();
 		for (const auto& [texture, archive] : a_textures) s_sources.emplace("textures\\" + texture, archive);
 		for (const auto& [model, archive] : a_models) s_sources.emplace("meshes\\" + model, archive);
+	}
+
+	void AddSource(const std::string& a_file, const std::string& a_archive)
+	{
+		std::scoped_lock lock(s_lock);
+		s_sources[a_file] = a_archive;
 	}
 
 	bool Install()

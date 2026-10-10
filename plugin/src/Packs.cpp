@@ -16,6 +16,8 @@ namespace ArtMixer::Packs
 		std::vector<std::string> s_sections;                                     // MCM section names of the share categories, in menu order
 		std::unordered_map<std::string, std::vector<const Pack*>> s_slots;       // category -> the packs its slots name, in slot order
 		std::unordered_map<std::string, ModelUse> s_models;                      // game model (relative to Meshes, lowercase) -> its use
+		std::unordered_map<std::string, ScreenLook> s_screenModels;              // game loading screen ("file:local id", lowercase) -> its own look
+		std::unordered_map<std::string, std::string> s_gameFiles;                // game loading menu file (relative to Data, lowercase) -> its archive
 
 		[[nodiscard]] std::optional<float> Number(const nlohmann::json& a_row, const char* a_key)
 		{
@@ -78,6 +80,23 @@ namespace ArtMixer::Packs
 				std::replace(modelKey.begin(), modelKey.end(), '/', '\\');
 				models.emplace(std::move(modelKey), std::move(use));
 			}
+			std::unordered_map<std::string, ScreenLook> screenModels;
+			std::unordered_map<std::string, std::string> gameFiles;
+			for (const auto& [screen, look] : json.value("screenModels", nlohmann::json::object()).items()) {
+				if (!look.is_object()) continue;
+				ScreenLook own{ Settings::Lower(Str(look, "model")), Settings::Lower(Str(look, "transform")), std::nullopt, std::nullopt };
+				if (const auto rotation = look.find("rotation"); rotation != look.end() && rotation->is_array() && rotation->size() == 2) own.rotation = std::array<std::int16_t, 2>{ rotation->at(0).get<std::int16_t>(), rotation->at(1).get<std::int16_t>() };
+				if (const auto zoom = look.find("zoom"); zoom != look.end() && zoom->is_array() && zoom->size() == 2) own.zoom = std::array<float, 2>{ zoom->at(0).get<float>(), zoom->at(1).get<float>() };
+				if (!own.model.empty()) screenModels.emplace(Settings::Lower(screen), std::move(own));
+			}
+			for (const auto& [name, archive] : json.value("gameFiles", nlohmann::json::object()).items()) {
+				if (!archive.is_string()) continue;
+				auto key = Settings::Lower(name);
+				std::replace(key.begin(), key.end(), '/', '\\');
+				gameFiles.emplace(std::move(key), archive.get<std::string>());
+			}
+			s_screenModels = std::move(screenModels);
+			s_gameFiles = std::move(gameFiles);
 			for (const auto* list : { "gameTextures", "gameModels" }) {
 				for (const auto& [name, archive] : json.value(list, nlohmann::json::object()).items()) {
 					if (!archive.is_string()) continue;
@@ -122,6 +141,8 @@ namespace ArtMixer::Packs
 				}
 				pack.music = Str(row, "music");
 				std::replace(pack.music.begin(), pack.music.end(), '/', '\\');
+				pack.loadingMenu = Str(row, "loadingMenu");
+				std::replace(pack.loadingMenu.begin(), pack.loadingMenu.end(), '/', '\\');
 				std::size_t count = 0;
 				for (const auto& img : row.value("images", nlohmann::json::array())) {
 					Image image;
@@ -166,6 +187,8 @@ namespace ArtMixer::Packs
 		s_models = std::move(models);
 		logger::info("packs: {} game models drawn with replaced art get their picks while they load", s_models.size());
 		GameArchives::SetSources(gameTextures, gameModels);
+		for (const auto& [gameFile, archive] : s_gameFiles) GameArchives::AddSource(gameFile, archive);
+		logger::info("packs: {} game loading screens with the form they show, {} game loading menu files placed in their archives", s_screenModels.size(), s_gameFiles.size());
 		for (std::size_t i = 0; i < sections.size(); ++i) {
 			auto& slots = s_slots[Settings::NormalizeCategory(sections[i])];
 			for (const auto& id : slotIds[i]) {
@@ -261,6 +284,17 @@ namespace ArtMixer::Packs
 		}
 		if (resolved > 0) logger::info("packs: {} versions load with the game's own material swap", resolved);
 		RestoreGameRecords();
+	}
+
+	const ScreenLook* GameScreen(std::string_view a_screen)
+	{
+		const auto it = s_screenModels.find(Settings::Lower(a_screen));
+		return it == s_screenModels.end() ? nullptr : &it->second;
+	}
+
+	const std::unordered_map<std::string, std::string>& GameFiles()
+	{
+		return s_gameFiles;
 	}
 
 	const ScreenCard* VanillaScreenCard(std::string_view a_screen)

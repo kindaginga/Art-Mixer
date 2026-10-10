@@ -3,6 +3,7 @@
 #include "ApplyNow.h"
 #include "Distributor.h"
 #include "Engine.h"
+#include "LoadScreens.h"
 #include "MainMenu.h"
 #include "MenuRotation.h"
 #include "Packs.h"
@@ -168,27 +169,35 @@ namespace ArtMixer::Papyrus
 			return values;
 		}
 
-		// The Main menu page's six switches as MCM ids, in effect or by default, in the order of GetMenuFlagValues.
+		// The Main menu page's six switches and the Loading screens page's two boxes as MCM ids with their values, in effect or by default.
+		[[nodiscard]] std::vector<std::pair<std::string, int>> AllFlagValues(bool a_defaults)
+		{
+			auto flags = MenuRotation::FlagValues(a_defaults);
+			for (auto& flag : LoadScreens::FlagValues(a_defaults)) flags.push_back(std::move(flag));
+			return flags;
+		}
+
+		// The switches as MCM ids, in effect or by default, in the order of GetMenuFlagValues.
 		std::vector<std::string> GetMenuFlagIds(std::monostate, bool a_defaults)
 		{
 			std::vector<std::string> ids;
-			for (auto& [id, value] : MenuRotation::FlagValues(a_defaults)) ids.push_back(std::move(id));
+			for (auto& [id, value] : AllFlagValues(a_defaults)) ids.push_back(std::move(id));
 			return ids;
 		}
 
 		std::vector<std::int32_t> GetMenuFlagValues(std::monostate, bool a_defaults)
 		{
 			std::vector<std::int32_t> values;
-			for (const auto& [id, value] : MenuRotation::FlagValues(a_defaults)) values.push_back(value);
+			for (const auto& [id, value] : AllFlagValues(a_defaults)) values.push_back(value);
 			return values;
 		}
 
-		// True when a menu share, pick or Main menu page switch differs from the settings in effect.
+		// True when a menu share, pick, Main menu page switch or Loading screens page box differs from the settings in effect.
 		bool MenuHasChanges(std::monostate)
 		{
 			if (!MenuFixes(false).empty()) return true;
 			const auto menu = Settings::MenuValues();
-			for (const auto& [id, value] : MenuRotation::FlagValues(false)) {
+			for (const auto& [id, value] : AllFlagValues(false)) {
 				const auto it = menu.find(id);
 				if (it != menu.end() && (it->second != 0) != (value != 0)) return true;
 			}

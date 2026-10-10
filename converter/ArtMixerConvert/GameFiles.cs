@@ -340,7 +340,7 @@ public sealed class GameFiles
                 foreach (var record in plugin.Models) _gameModels[record.Key] = record;
                 foreach (var (key, substitutions) in plugin.MaterialSwaps) _gameSwaps[key] = substitutions;
                 foreach (var (key, textures) in plugin.TextureSets) _gameTextureSets[key] = textures;
-                foreach (var (key, shown) in plugin.LoadScreens) _gameLoadScreens[key] = shown;
+                foreach (var (key, screen) in plugin.LoadScreens) _gameLoadScreens[key] = screen;
             }
             catch (Exception e)
             {
@@ -367,9 +367,9 @@ public sealed class GameFiles
     public List<(FormKey Screen, PluginFile.ModelRecord? Model)> GameLoadScreens()
     {
         IndexGameRecords(["LSCR", "STAT", "SCOL", "MSWP"]);
-        return _gameLoadScreens.OrderBy(kv => kv.Key.File, StringComparer.OrdinalIgnoreCase).ThenBy(kv => kv.Key.Local).Select(kv => (kv.Key, GameModelRecord(kv.Value))).ToList();
+        return _gameLoadScreens.OrderBy(kv => kv.Key.File, StringComparer.OrdinalIgnoreCase).ThenBy(kv => kv.Key.Local).Select(kv => (kv.Key, GameModelRecord(kv.Value.Shown))).ToList();
     }
-    private readonly Dictionary<FormKey, FormKey> _gameLoadScreens = [];
+    private readonly Dictionary<FormKey, PluginFile.LoadScreen> _gameLoadScreens = [];
 
     /// <summary>The game's own texture set record (TX00 to TX07), or null (call <see cref="IndexGameRecords"/> for TXST first).</summary>
     public string[]? GameTextureSet(FormKey key) => _gameTextureSets.TryGetValue(key, out var textures) ? textures : null;
@@ -420,6 +420,14 @@ public sealed class GameFiles
     {
         var archive = _textures.FirstOrDefault(a => a.Contains("textures\\" + relative));
         return archive is { IsTextureArchive: true } ? Path.GetFileName(archive.Path) : null;
+    }
+    /// <summary>The file name of the game archive a file (relative to Data) is in, interface archives first, or null when no game archive has it.</summary>
+    public string? GameFileArchive(string relative) => _interface.Concat(_textures).Concat(_meshes).Concat(_materials).FirstOrDefault(a => a.Contains(relative)) is { } archive ? Path.GetFileName(archive.Path) : null;
+    /// <summary>Every loading screen of the game's own plugins with its own look: the form it shows, its framing and its motion.</summary>
+    public IReadOnlyDictionary<FormKey, PluginFile.LoadScreen> GameLoadScreenForms()
+    {
+        IndexGameRecords(["LSCR", "STAT", "SCOL", "MSWP"]);
+        return _gameLoadScreens;
     }
     public byte[]? ReadMesh(string relative) => Read(_meshes, "meshes\\" + relative);
     /// <summary>The file name of the archive ReadMesh takes a model from, or null when no archive has it.</summary>

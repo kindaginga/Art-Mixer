@@ -50,7 +50,9 @@ public sealed class PluginFile
     public List<ModelRecord> Models { get; } = [];
     public Dictionary<FormKey, List<Substitution>> MaterialSwaps { get; } = [];
     public Dictionary<FormKey, string[]> TextureSets { get; } = [];  // TX00 to TX07, relative to Textures, empty where unset
-    public Dictionary<FormKey, FormKey> LoadScreens { get; } = [];     // loading screen (LSCR) -> the form it shows (NNAM)
+    /// <summary>A loading screen's own look: the form it shows (NNAM), its framing transform (TNAM, null for none), its rotation range in degrees (ONAM) and its zoom range (ZNAM).</summary>
+    public sealed record LoadScreen(FormKey Shown, FormKey? Transform, short[]? Rotation, float[]? Zoom);
+    public Dictionary<FormKey, LoadScreen> LoadScreens { get; } = [];  // loading screen (LSCR) -> its own look
     public Dictionary<FormKey, int[]> WorldMaps { get; } = [];         // world space (WRLD) -> its world map data (MNAM): usable width, usable height, NW cell x, y, SE cell x, y
     private bool _worldChildren = true;
     /// <summary>Every record read, as type and identity.</summary>
@@ -210,10 +212,17 @@ public sealed class PluginFile
         }
         if (type == "LSCR")
         {
+            FormKey? shown = null, transform = null;
+            short[]? rotation = null;
+            float[]? zoom = null;
             foreach (var (name, field) in Fields(fields))
             {
-                if (name == "NNAM" && field.Length >= 4) LoadScreens[key] = Resolve(BitConverter.ToUInt32(field, 0));
+                if (name == "NNAM" && field.Length >= 4) shown = Resolve(BitConverter.ToUInt32(field, 0));
+                if (name == "TNAM" && field.Length >= 4) transform = Resolve(BitConverter.ToUInt32(field, 0));
+                if (name == "ONAM" && field.Length >= 4) rotation = [BitConverter.ToInt16(field, 0), BitConverter.ToInt16(field, 2)];
+                if (name == "ZNAM" && field.Length >= 8) zoom = [BitConverter.ToSingle(field, 0), BitConverter.ToSingle(field, 4)];
             }
+            if (shown is { } shownForm) LoadScreens[key] = new LoadScreen(shownForm, transform, rotation, zoom);
             return;
         }
         if (type == "TXST")

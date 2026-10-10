@@ -45,6 +45,8 @@ namespace ArtMixer::MenuRotation
 	// Writes or removes the packs' Random Main Menu entries, sets Random Main Menu's settings, and sets the names hidden from it,
 	// all from the flags in effect; also brings the MCM lists up to date with the Immersive Main Menus menus shown.
 	void Apply();
+	// Brings the MCM config up to date: the three lists, and the Leave box shown only while ALR.esp is loaded (once the game data is loaded).
+	void RefreshMenuConfig();
 	// Shows the message about a Random Main Menu file that did not load, once, when the main menu is up.
 	void OnMainMenuReady();
 	// True while Random Main Menu may choose the menu video: Rotate themes or Rotate backgrounds on, or Immersive Main Menus only.

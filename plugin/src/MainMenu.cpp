@@ -1048,6 +1048,18 @@ namespace ArtMixer::MainMenu
 
 	std::string RedirectMovie(std::string_view a_url)
 	{
+		// A loading screen that is Art Mixer's gets the game's own loading menu, whatever file another mod put in its place (ruling 2026-10-09).
+		{
+			auto lower = Settings::Lower(a_url);
+			std::replace(lower.begin(), lower.end(), '/', '\\');
+			if (lower.ends_with("interface\\loadingmenu.swf") && (LoadScreens::NextIsCover() || LoadScreens::ServesGameFiles())) {
+				// The game's own loading menu from the vanilla pack's loose copy (a file served out of an archive here spins the loader, measured 2026-10-09).
+				const auto* vanilla = Packs::Vanilla();
+				if (vanilla && !vanilla->loadingMenu.empty()) return vanilla->loadingMenu;
+				static std::atomic<bool> s_warned{ false };
+				if (!s_warned.exchange(true)) logger::warn("loading screens: the packs carry no copy of the game's loading menu (converted before the Leave box), so the installed loading menu file opens; convert again");
+			}
+		}
 		const auto candidates = Packs::MoviesFor(a_url);
 		if (candidates.empty()) return {};
 		const auto& category = candidates.front().second->category;

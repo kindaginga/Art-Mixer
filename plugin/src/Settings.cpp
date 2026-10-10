@@ -65,6 +65,18 @@ namespace ArtMixer::Settings
 		}
 
 		// Applies one MCM ini file onto the in-memory values without locking.
+		// The Loading screens page's boxes as the page spells them, one line each (s_mutex held).
+		[[nodiscard]] std::string LoadingScreenFlagLines()
+		{
+			static const std::map<std::string, std::string> s_spelling{ { "bleavetoalr", "bLeaveToALR" } };
+			std::string text;
+			for (const auto& [key, value] : s_values.loadingScreens) {
+				const auto spelled = s_spelling.find(key);
+				text += fmt::format("{}={}\n", spelled == s_spelling.end() ? key : spelled->second, value);
+			}
+			return text;
+		}
+
 		void ApplyIni(const std::filesystem::path& a_path)
 		{
 			std::ifstream file(a_path);
@@ -93,6 +105,9 @@ namespace ArtMixer::Settings
 					++applied;
 				} else if (section == "mainmenu") {
 					s_values.mainMenu[key] = *value;
+					++applied;
+				} else if (section == "loadingscreens" && key == "bleavetoalr") {
+					s_values.loadingScreens[key] = *value;
 					++applied;
 				} else if (key.starts_with("bpack_") || key.starts_with("ipack_")) {
 					// Takes switches (bPack_) only on Other replacers and shares (iPack_) only on the other pages.
@@ -182,6 +197,13 @@ namespace ArtMixer::Settings
 		std::scoped_lock lock(s_mutex);
 		const auto it = s_values.mainMenu.find(Lower(a_key));
 		return it == s_values.mainMenu.end() ? std::nullopt : std::optional<int>(it->second);
+	}
+
+	std::optional<int> LoadingScreensFlag(std::string_view a_key)
+	{
+		std::scoped_lock lock(s_mutex);
+		const auto it = s_values.loadingScreens.find(Lower(a_key));
+		return it == s_values.loadingScreens.end() ? std::nullopt : std::optional<int>(it->second);
 	}
 
 	std::string MenuKey(std::string_view a_section, int a_slot)
@@ -287,7 +309,9 @@ namespace ArtMixer::Settings
 					if (key.empty()) continue;
 					text += category == "other" ? fmt::format("{}={}\n", key, settings.percent[i] == 100 ? 1 : 0) : fmt::format("{}={}\n", key, settings.percent[i]);
 				}
+				if (category == "loadingscreens") text += LoadingScreenFlagLines();
 			}
+			if (!s_values.categories.contains("loadingscreens") && !s_values.loadingScreens.empty()) text += fmt::format("\n[{}loadingscreens]\n", kSectionPrefix) + LoadingScreenFlagLines();
 		}
 		const auto path = AppliedPath();
 		std::ofstream file(path, std::ios::binary | std::ios::trunc);

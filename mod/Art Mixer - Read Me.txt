@@ -73,16 +73,20 @@ MENU
   Pip-Boy          Pick the screen background and the skin: Vanilla or one pack each.
   World map        Pick the Pip-Boy world map: Vanilla or one pack. A map drawn at a different size keeps
                    its markers lined up.
-  Loading screens  One slider per pack with magazine covers: the percent of loading screens that show its
-                   covers.
-  Main menu        Themes, Backgrounds and Music: the same picks as the "MENU ART" entry on the main
-                   menu. With Random Main Menu (Nexus 74187) installed, a Random Main Menu box appears
-                   below them. Off: your picks play. On: your packs join its draw, by "Rotate themes"
-                   (a background with its music), "Rotate backgrounds" (the Music pick stays) or
+  Menus            Two sections.
+                   Main menu: Themes, Backgrounds and Music, the same picks as the "MENU ART" entry on
+                   the main menu. With Random Main Menu (Nexus 74187) installed, a Random Main Menu box
+                   appears below them. Off: your picks play. On: your packs join its draw, by "Rotate
+                   themes" (a background with its music), "Rotate backgrounds" (the Music pick stays) or
                    "Rotate music" (the Backgrounds pick stays). With Immersive Main Menus (Nexus 82077)
                    installed as well, its box adds its menus to the lists and to the draw, and
                    "Immersive Main Menus only" keeps your picks out of the draw. Neither mod is
                    required; the boxes appear only when the mod is found at game start.
+                   Loading screens: one slider per pack with magazine covers, the percent of loading
+                   screens that show its covers. With Automated Loading Screen Replacer (Nexus 52322)
+                   installed, a switch of that name appears above them: off, Art Mixer runs every
+                   loading screen and Automated Loading Screen Replacer does nothing; on, the loading
+                   screens are its and the sliders go away.
 
   Apply all        Applies your changes. The game saves as ArtMixerApply and reloads it, so everything updates
                    at once. Leaving the menu with changes not applied asks "Apply all" or "Cancel".
@@ -113,13 +117,12 @@ KNOWN ISSUES
 
 TROUBLESHOOTING
 ---------------
-  - Random Main Menu plays something other than your pick: its box in the Main menu page is on with a
+  - Random Main Menu plays something other than your pick: its box on the Menus page is on with a
     Rotate switch, which is the draw working as set. With the box off, the log carries
     "Random Main Menu's menu calls hooked"; a line ending "stay in control of the menu" means the
     plugin could not take the menu over on your game version, so send the log.
-  - While ALR.esp (Automated Loading Screen Replacer) is active, the loading screens are left to ALR: the
-    Loading screens sliders have no effect and magazine cover packs do not appear on the loading screen
-    magazine. Everything else works as usual.
+  - Automated Loading Screen Replacer shows nothing: its switch on the Menus page is off, which is the
+    default; turn it on to hand the loading screens to it.
   - Files missing or damaged: the game names them at startup. Open the converter: under Mod Organizer 2 it
     restores them; otherwise reinstall Art Mixer.
   - Log file: Documents\My Games\Fallout4\F4SE\ArtMixer.log

@@ -643,6 +643,11 @@ namespace ArtMixer::Distributor
 
 	std::string ChooseTexture(std::string_view a_relative)
 	{
+		// With ALR.esp loaded and the Leave box off, the game's own loading menu textures show past Automated Loading Screen Replacer's copies.
+		if (LoadScreens::ServesGameFiles() && Packs::GameFiles().contains("textures\\" + std::string(a_relative))) {
+			logger::info("loading screens: the game's own {} served from its archive", a_relative);
+			return "artmixer\\game\\" + std::string(a_relative);
+		}
 		// Texture (relative to Textures, lowercase) of every "%" slot a pack replaces -> its category.
 		static const auto s_categories = [] {
 			std::unordered_map<std::string, std::string> categories;
