@@ -1,0 +1,16 @@
+* text=auto
+*.png binary
+*.jpg binary
+*.dds binary
+*.nif binary
+*.swf binary
+*.bk2 binary
+*.xwm binary
+*.ba2 binary
+*.esl binary
+*.esp binary
+*.esm binary
+*.pex binary
+*.dll binary
+*.exe binary
+*.zip binary
