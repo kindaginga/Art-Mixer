@@ -101,7 +101,7 @@ public static class Program
     private static int ListInstalled(string? mo2Instance, List<string> folders)
     {
         Destination? destination;
-        if (mo2Instance != null) destination = Managers.Mo2Instance(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ModOrganizer", mo2Instance));
+        if (mo2Instance != null) destination = Managers.Mo2Instance(Path.Combine(Managers.Mo2Root, mo2Instance));
         else if (folders.Count > 0) destination = Managers.FromFolder(folders[0]);
         else
         {

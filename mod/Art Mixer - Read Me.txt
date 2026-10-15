@@ -42,8 +42,10 @@ The converter is Tools\ArtMixer\Art Mixer.exe inside the mod. Add it as a tool:
     <instance>\mods\Art Mixer\Tools\ArtMixer\Art Mixer.exe
   Vortex: Dashboard > Add tool > browse to Data\Tools\ArtMixer\Art Mixer.exe
 
-It finds your Mod Organizer 2 instances and Vortex by itself. "Find installed art mods" lists the mods that
-hold art, grouped by the kind of art each holds most of; enabled ones are ticked. The "Props and set
+It finds your Mod Organizer 2 instances (a portable instance when it runs from inside its mods folder) and
+Vortex by itself; press Browse next to Mod Manager to pick an instance folder it did not find. "Find
+installed art mods" lists the mods that hold art, grouped by the kind of art each holds most of; enabled
+ones are ticked. The "Props and set
 dressing" group starts collapsed: open it to see which of those mods will be converted. Mods in the
 "Mostly not art" group (graphics overhauls, item sorters and other mods that mostly change things other
 than art) start collapsed and unticked: tick one to convert its art. Each ticked mod becomes one pack named after the mod (rename the mod in

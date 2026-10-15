@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <fomod>
   <Name>Art Mixer</Name>
-  <Version>1.0.2</Version>
+  <Version>1.0.3</Version>
   <Website>https://www.nexusmods.com/profile/kindaginga/mods</Website>
   <Description>Distributes art from several art mods across the game's paintings, posters, signs, magazines, props, Pip-Boy, world map, loading screens and main menu by the percentages and picks you set in the MCM.</Description>
   <Groups>

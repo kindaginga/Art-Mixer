@@ -190,7 +190,7 @@ public static class CoreCheck
         if (!Path.IsPathRooted(recorded))
         {
             var mods = Path.GetDirectoryName(folder.TrimEnd('\\', '/'));
-            var instance = Managers.Detect().FirstOrDefault(d => d.Kind == "mo2" && d.ModsFolder != null && mods != null && Path.GetFullPath(d.ModsFolder).TrimEnd('\\').Equals(Path.GetFullPath(mods).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase));
+            var instance = Managers.Detect().FirstOrDefault(d => d.Kind == "mo2" && Managers.SameFolder(d.ModsFolder, mods));
             if (instance?.DownloadsFolder == null) return (null, $"the install archive {recorded} was not found");
             recorded = Path.Combine(instance.DownloadsFolder, recorded);
         }

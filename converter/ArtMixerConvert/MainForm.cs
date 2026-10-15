@@ -14,6 +14,7 @@ public sealed class MainForm : Form
     private readonly Button _convert = new() { Text = "Convert", Height = 40, Dock = DockStyle.Fill, Font = new Font(FontFamily.GenericSansSerif, 11, FontStyle.Bold) };
     private readonly TextBox _log = new() { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, Font = new Font(FontFamily.GenericMonospace, 9) };
     private readonly Label _status = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
+    private readonly Button _browseInstance = new() { Text = "Browse", Dock = DockStyle.Fill };
     private readonly Button _browseGame = new() { Text = "Browse", Dock = DockStyle.Fill };
     private readonly Button _browseFolder = new() { Text = "Browse", Dock = DockStyle.Fill };
     private readonly Button _openOutput = new() { Text = "Open output folder", Dock = DockStyle.Fill, Enabled = false };
@@ -48,7 +49,7 @@ public sealed class MainForm : Form
             row++;
         }
 
-        Add("Mod Manager:", _destination);
+        Add("Mod Manager:", _destination, _browseInstance);
         Add("FO4 Folder:", _game, _browseGame);
         Add("Output Folder:", _folder, _browseFolder);
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -67,6 +68,7 @@ public sealed class MainForm : Form
         grid.Controls.Add(findPanel, 2, row);
         row++;
         _tips.SetToolTip(_find, "Looks through the mods installed in the Mod Organizer 2 instance or Vortex chosen above\nand lists every mod with art the converter takes. A mod converts as you installed it.");
+        _tips.SetToolTip(_browseInstance, "Picks a Mod Organizer 2 instance folder (the one with ModOrganizer.ini) or Vortex's data folder\n(the one with state.v2) that the list does not show, such as a portable instance.");
         Disposed += (_, _) => _tips.Dispose();
         grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         grid.Controls.Add(_convert, 0, row); grid.SetColumnSpan(_convert, 2);
@@ -82,6 +84,7 @@ public sealed class MainForm : Form
         foreach (var d in detected) _destination.Items.Add(d);
         _destination.SelectedIndexChanged += (_, _) => ApplyDestination();
 
+        _browseInstance.Click += (_, _) => BrowseInstance();
         _browseGame.Click += (_, _) => { using var dlg = new FolderBrowserDialog { Description = "Select the Fallout 4 folder (the one with Fallout4.exe)" }; if (dlg.ShowDialog(this) == DialogResult.OK) _game.Text = dlg.SelectedPath; };
         _browseFolder.Click += (_, _) => { using var dlg = new FolderBrowserDialog { Description = "Select where the Art Mixer Packs folder goes" }; if (dlg.ShowDialog(this) == DialogResult.OK) _folder.Text = Path.Combine(dlg.SelectedPath, Conversion.OutputModName); };
         _find.Click += async (_, _) => await FindInstalledAsync();
@@ -91,10 +94,35 @@ public sealed class MainForm : Form
         {
             _find.Enabled = false;
             _convert.Enabled = false;
-            _status.Text = "No Mod Organizer 2 instance or Vortex with Fallout 4 was found. Install your art mods with one of them first.";
+            _status.Text = "No Mod Organizer 2 instance or Vortex with Fallout 4 was found. Press Browse to pick your Mod Organizer 2 instance folder, or install your art mods with a mod manager first.";
             return;
         }
         _destination.SelectedItem = Managers.Preferred(detected) ?? _destination.Items[0];
+    }
+
+    /// <summary>Adds the Mod Organizer 2 instance or Vortex data folder the player picks to the Mod Manager list and selects it;
+    /// a folder already listed is selected instead.</summary>
+    private void BrowseInstance()
+    {
+        if (_busy) return;
+        using var dlg = new FolderBrowserDialog { Description = "Select a Mod Organizer 2 instance folder (the one with ModOrganizer.ini) or Vortex's data folder (the one with state.v2)" };
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        var picked = Managers.FromFolder(dlg.SelectedPath);
+        if (picked == null)
+        {
+            _status.Text = $"No Fallout 4 Mod Organizer 2 instance or Vortex was found in {dlg.SelectedPath}.";
+            return;
+        }
+        static string? Identity(Destination d) => d.Kind == "mo2" ? d.InstanceFolder : d.DownloadsFolder;
+        var listed = _destination.Items.OfType<Destination>().FirstOrDefault(d => d.Kind == picked.Kind && Managers.SameFolder(Identity(d), Identity(picked)));
+        if (listed == null)
+        {
+            _destination.Items.Add(picked);
+            listed = picked;
+        }
+        _find.Enabled = true;
+        _convert.Enabled = true;
+        _destination.SelectedItem = listed;
     }
 
     protected override void OnLoad(EventArgs e)

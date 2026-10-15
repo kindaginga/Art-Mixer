@@ -12,6 +12,7 @@ public sealed class Destination
     public string? ModsFolder { get; init; }             // MO2: the instance's mods folder; Vortex: its Fallout 4 staging folder
     public string? DownloadsFolder { get; init; }        // the manager's Fallout 4 downloads folder
     public string? ProfileFolder { get; init; }          // MO2: the instance's active profile
+    public string? InstanceFolder { get; init; }         // MO2: the folder holding the instance's ModOrganizer.ini
     public IReadOnlyDictionary<string, bool>? ModStates { get; init; }  // Vortex: whether its Fallout 4 profile enables each mod, by mod id (the staging folder name)
     public override string ToString() => Label;
 }
@@ -36,13 +37,15 @@ public static class Managers
         return null;
     }
 
+    /// <summary>The folder Mod Organizer 2 keeps its global instances in, one subfolder per instance.</summary>
+    internal static readonly string Mo2Root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ModOrganizer");
+
     public static List<Destination> Detect()
     {
         var list = new List<Destination>();
-        var mo2Root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ModOrganizer");
-        if (Directory.Exists(mo2Root))
+        if (Directory.Exists(Mo2Root))
         {
-            foreach (var dir in Directory.EnumerateDirectories(mo2Root).OrderBy(d => d))
+            foreach (var dir in Directory.EnumerateDirectories(Mo2Root).OrderBy(d => d))
             {
                 Destination? instance;
                 try { instance = Mo2Instance(dir); }
@@ -50,6 +53,9 @@ public static class Managers
                 if (instance != null) list.Add(instance);
             }
         }
+        // A portable instance keeps ModOrganizer.ini beside ModOrganizer.exe, above the mods folder the converter runs from.
+        var above = InstanceAbove(AppContext.BaseDirectory);
+        if (above != null && !list.Any(d => SameFolder(d.InstanceFolder, above.InstanceFolder))) list.Add(above);
         var vortex = Vortex(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Vortex"));
         if (vortex != null) list.Add(vortex);
         return list;
@@ -67,15 +73,36 @@ public static class Managers
         var baseDir = values.TryGetValue("settings.base_directory", out var bd) ? Unwrap(bd) : dir;
         string Folder(string key, string fallback) => values.TryGetValue($"settings.{key}", out var value) ? Unwrap(value).Replace("%BASE_DIR%", baseDir) : Path.Combine(baseDir, fallback);
         var profile = values.TryGetValue("general.selected_profile", out var sp) ? Unwrap(sp) : "Default";
+        var global = SameFolder(Path.GetDirectoryName(dir), Mo2Root);
+        var portable = File.Exists(Path.Combine(dir, "portable.txt"));
         return new Destination
         {
-            Label = $"Mod Organizer 2 instance: {Path.GetFileName(dir)}",
+            Label = global ? $"Mod Organizer 2 instance: {Path.GetFileName(dir)}" : $"Mod Organizer 2 {(portable ? "portable " : "")}instance: {dir}",
             Kind = "mo2",
             GameFolder = gamePath,
             ModsFolder = Folder("mod_directory", "mods"),
             DownloadsFolder = Folder("download_directory", "downloads"),
             ProfileFolder = Path.Combine(Folder("profiles_directory", "profiles"), profile),
+            InstanceFolder = dir,
         };
+    }
+
+    /// <summary>The nearest Mod Organizer 2 instance for Fallout 4 whose folder is this one or holds it, found by walking up
+    /// to the drive root. Null when there is none.</summary>
+    public static Destination? InstanceAbove(string folder)
+    {
+        for (var dir = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)); !string.IsNullOrEmpty(dir); dir = Path.GetDirectoryName(dir))
+        {
+            try { if (Mo2Instance(dir) is { } instance) return instance; }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        }
+        return null;
+    }
+
+    /// <summary>Whether two paths name the same folder; false when either is null.</summary>
+    internal static bool SameFolder(string? a, string? b)
+    {
+        return a != null && b != null && Path.TrimEndingDirectorySeparator(Path.GetFullPath(a)).Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(b)), StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>Vortex's Fallout 4 setup inside its data folder (normally %APPDATA%\Vortex), or null when that folder has no
